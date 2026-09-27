@@ -37,23 +37,7 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      // Optional browser geolocation for tracking
-      let coords: { lat: number; lon: number } | undefined;
-      if ('geolocation' in navigator) {
-        try {
-          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3000 });
-          });
-          coords = {
-            lat: pos.coords.latitude,
-            lon: pos.coords.longitude,
-          };
-        } catch {
-          // Non-blocking for login
-        }
-      }
-
-      const user = await login(values.identifier, values.password, coords);
+      const user = await login(values.identifier, values.password);
       if (user.role_name === 'SUPER_ADMIN' || user.role_name === 'HR_ADMIN') {
         navigate('/admin/dashboard');
       } else {
