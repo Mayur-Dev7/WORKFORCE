@@ -181,6 +181,7 @@ export async function runSeed(): Promise<void> {
     // EMPLOYEE
     const employeePerms = [
       PermissionKey.USER_READ,
+      PermissionKey.OFFICE_READ,
       PermissionKey.ATTENDANCE_CHECKIN,
       PermissionKey.ATTENDANCE_CHECKOUT,
       PermissionKey.ATTENDANCE_READ,
