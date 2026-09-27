@@ -249,7 +249,28 @@ export const CheckInPage: React.FC = () => {
         {resultError && (
           <Alert
             message={resultError.title}
-            description={resultError.message}
+            description={
+              <div>
+                <div>{resultError.message}</div>
+                {resultError.title.includes('FACE_MISMATCH') && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ marginBottom: 8, fontSize: 13, color: '#a8071a' }}>
+                      <strong>Why this happened:</strong> Your live webcam face was compared against the seeded reference photo of Alex Mercer shown below. To check in with your own face, please register your face template first:
+                    </div>
+                    <Button
+                      type="primary"
+                      danger
+                      onClick={() => {
+                        if (stream) stream.getTracks().forEach((t) => t.stop());
+                        navigate('/employee/face-enrollment');
+                      }}
+                    >
+                      📸 Register / Update My Face Now
+                    </Button>
+                  </div>
+                )}
+              </div>
+            }
             type="error"
             showIcon
             style={{ marginBottom: 24, fontSize: 15 }}
