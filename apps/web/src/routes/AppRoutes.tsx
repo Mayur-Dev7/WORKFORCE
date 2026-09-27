@@ -7,6 +7,7 @@ import { EmployeeDashboard } from '../pages/employee/EmployeeDashboard.js';
 import { CheckInPage } from '../pages/employee/CheckInPage.js';
 import { CheckOutPage } from '../pages/employee/CheckOutPage.js';
 import { AttendanceHistoryPage } from '../pages/employee/AttendanceHistoryPage.js';
+import { SelfEnrollmentPage } from '../pages/employee/SelfEnrollmentPage.js';
 import { AdminDashboard } from '../pages/admin/AdminDashboard.js';
 import { UsersPage } from '../pages/admin/UsersPage.js';
 import { FaceEnrollmentPage } from '../pages/admin/FaceEnrollmentPage.js';
@@ -40,6 +41,7 @@ export const AppRoutes: React.FC = () => {
 
         {/* Employee Self Service */}
         <Route path="employee/dashboard" element={<EmployeeDashboard />} />
+        <Route path="employee/face-enrollment" element={<SelfEnrollmentPage />} />
         <Route
           path="employee/attendance/check-in"
           element={

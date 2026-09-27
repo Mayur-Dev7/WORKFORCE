@@ -164,7 +164,7 @@ export const EmployeeDashboard: React.FC = () => {
               <strong>{office?.name || user?.office_name}</strong>
             </Text>
             <div style={{ marginTop: 12 }}>
-              <Space>
+              <Space wrap>
                 {user?.face_enrolled ? (
                   <Tag icon={<SmileOutlined />} color="success">
                     Biometric Face Enrolled
@@ -174,6 +174,15 @@ export const EmployeeDashboard: React.FC = () => {
                     Face Profile Not Enrolled
                   </Tag>
                 )}
+
+                <Button
+                  size="small"
+                  type="link"
+                  icon={<IdcardOutlined />}
+                  onClick={() => navigate('/employee/face-enrollment')}
+                >
+                  {user?.face_enrolled ? 'Update Reference Face' : 'Upload Reference Face Photo'}
+                </Button>
 
                 {isInsideGeofence === true && (
                   <Tag icon={<EnvironmentOutlined />} color="success">
@@ -217,8 +226,8 @@ export const EmployeeDashboard: React.FC = () => {
                   width: '100%',
                   fontSize: 18,
                   borderRadius: 8,
-                  background: '#16a34a',
-                  borderColor: '#16a34a',
+                  background: user?.face_enrolled ? '#16a34a' : undefined,
+                  borderColor: user?.face_enrolled ? '#16a34a' : undefined,
                 }}
                 disabled={!user?.face_enrolled}
                 onClick={() => navigate('/employee/attendance/check-in')}
@@ -227,13 +236,47 @@ export const EmployeeDashboard: React.FC = () => {
               </Button>
             )}
             {!user?.face_enrolled && (
-              <Text type="danger" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
-                Please ask HR / Administrator to enroll your face profile before check-in.
-              </Text>
+              <div style={{ marginTop: 8 }}>
+                <Text type="danger" style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>
+                  Reference face photo required before check-in.
+                </Text>
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<IdcardOutlined />}
+                  onClick={() => navigate('/employee/face-enrollment')}
+                >
+                  Upload Reference Face
+                </Button>
+              </div>
             )}
           </Col>
         </Row>
       </Card>
+
+      {!user?.face_enrolled && (
+        <Alert
+          message="Setup Your Biometric Face ID"
+          description={
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+              <span>
+                To check in at your office, upload or capture your official reference photo once.
+                The system stores your photo and biometric template to verify your identity at each check-in.
+              </span>
+              <Button
+                type="primary"
+                icon={<IdcardOutlined />}
+                onClick={() => navigate('/employee/face-enrollment')}
+              >
+                Upload Face Photo Now
+              </Button>
+            </div>
+          }
+          type="info"
+          showIcon
+          style={{ marginBottom: 24, borderRadius: 12 }}
+        />
+      )}
 
       {/* Geolocation Notice if any */}
       {geoError && (

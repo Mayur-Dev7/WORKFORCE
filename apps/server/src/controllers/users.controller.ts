@@ -78,11 +78,44 @@ export class UsersController {
         req.params.id,
         validated.embedding,
         validated.modelName,
-        validated.modelVersion
+        validated.modelVersion,
+        validated.referenceImage
       );
       res.status(200).json({
         success: true,
         data: user,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async enrollSelfFace(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const validated = EnrollFaceSchema.parse(req.body);
+      const user = await usersService.enrollFace(
+        req.user!.userId,
+        req.user!.userId,
+        validated.embedding,
+        validated.modelName,
+        validated.modelVersion,
+        validated.referenceImage
+      );
+      res.status(200).json({
+        success: true,
+        data: user,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async getSelfFaceTemplate(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const faceData = await usersService.getReferenceFace(req.user!.userId);
+      res.status(200).json({
+        success: true,
+        data: faceData,
       });
     } catch (err) {
       next(err);

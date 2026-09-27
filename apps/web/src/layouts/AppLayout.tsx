@@ -94,6 +94,12 @@ export const AppLayout: React.FC = () => {
           onClick: () => navigate('/employee/attendance/check-out'),
         },
         {
+          key: '/employee/face-enrollment',
+          icon: <IdcardOutlined style={{ color: '#1677ff' }} />,
+          label: 'Face Registration',
+          onClick: () => navigate('/employee/face-enrollment'),
+        },
+        {
           key: '/employee/attendance',
           icon: <HistoryOutlined />,
           label: 'My Attendance',

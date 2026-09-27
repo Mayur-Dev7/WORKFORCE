@@ -7,6 +7,7 @@ export interface FaceTemplateRow {
   embedding: number[];
   model_name: string;
   model_version: string;
+  reference_image?: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -15,7 +16,7 @@ export class FaceTemplatesRepository {
   async findByUserId(userId: string, client?: PoolClient): Promise<FaceTemplateRow | null> {
     const queryClient = client || pool;
     const query = `
-      SELECT id, user_id, embedding, model_name, model_version, created_at, updated_at
+      SELECT id, user_id, embedding, model_name, model_version, reference_image, created_at, updated_at
       FROM face_templates
       WHERE user_id = $1
     `;
@@ -29,26 +30,29 @@ export class FaceTemplatesRepository {
       embedding: number[];
       model_name: string;
       model_version: string;
+      reference_image?: string | null;
     },
     client?: PoolClient
   ): Promise<FaceTemplateRow> {
     const queryClient = client || pool;
     const query = `
-      INSERT INTO face_templates (user_id, embedding, model_name, model_version, updated_at)
-      VALUES ($1, $2, $3, $4, NOW())
+      INSERT INTO face_templates (user_id, embedding, model_name, model_version, reference_image, updated_at)
+      VALUES ($1, $2, $3, $4, $5, NOW())
       ON CONFLICT (user_id)
       DO UPDATE SET
         embedding = EXCLUDED.embedding,
         model_name = EXCLUDED.model_name,
         model_version = EXCLUDED.model_version,
+        reference_image = COALESCE(EXCLUDED.reference_image, face_templates.reference_image),
         updated_at = NOW()
-      RETURNING id, user_id, embedding, model_name, model_version, created_at, updated_at
+      RETURNING id, user_id, embedding, model_name, model_version, reference_image, created_at, updated_at
     `;
     const res = await queryClient.query<FaceTemplateRow>(query, [
       template.user_id,
       template.embedding,
       template.model_name,
       template.model_version,
+      template.reference_image || null,
     ]);
     return res.rows[0];
   }

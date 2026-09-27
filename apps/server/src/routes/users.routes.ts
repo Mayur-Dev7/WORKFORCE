@@ -7,6 +7,10 @@ const router = Router();
 
 router.use(requireAuth());
 
+// Self-service face enrollment & face template retrieval
+router.post('/self/enroll-face', usersController.enrollSelfFace);
+router.get('/self/face-template', usersController.getSelfFaceTemplate);
+
 router.get('/', requirePermission(PermissionKey.USER_READ), usersController.getAll);
 router.post('/', requirePermission(PermissionKey.USER_CREATE), usersController.create);
 router.get('/:id', requirePermission(PermissionKey.USER_READ), usersController.getById);

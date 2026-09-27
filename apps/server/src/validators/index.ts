@@ -54,6 +54,7 @@ export const EnrollFaceSchema = z.object({
   embedding: z.array(z.number()).min(64, 'Biometric face embedding vector must have at least 64 dimensions'),
   modelName: z.string().optional(),
   modelVersion: z.string().optional(),
+  referenceImage: z.string().optional(),
 });
 
 export const CreateOfficeSchema = z.object({

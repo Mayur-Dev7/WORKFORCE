@@ -167,7 +167,8 @@ export class UsersService {
     userId: string,
     embedding: number[],
     modelName = '@vladmandic/human',
-    modelVersion = '3.2.0'
+    modelVersion = '3.2.0',
+    referenceImage?: string | null
   ): Promise<User> {
     const user = await usersRepository.findById(userId);
     if (!user) {
@@ -186,6 +187,7 @@ export class UsersService {
           embedding: normalized,
           model_name: modelName,
           model_version: modelVersion,
+          reference_image: referenceImage,
         },
         client
       );
@@ -202,6 +204,7 @@ export class UsersService {
             employeeCode: user.employee_code,
             replaced: wasAlreadyEnrolled,
             modelName,
+            hasReferenceImage: !!referenceImage,
           },
         },
         client
@@ -211,6 +214,14 @@ export class UsersService {
       if (!refreshed) throw new Error('Failed to load enrolled user');
       return mapRowToUser(refreshed);
     });
+  }
+
+  async getReferenceFace(userId: string): Promise<{ enrolled: boolean; referenceImage: string | null }> {
+    const template = await faceTemplatesRepository.findByUserId(userId);
+    return {
+      enrolled: !!template,
+      referenceImage: template?.reference_image || null,
+    };
   }
 }
 

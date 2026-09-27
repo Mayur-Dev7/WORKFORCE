@@ -1,0 +1,2 @@
+ALTER TABLE face_templates ADD COLUMN IF NOT EXISTS reference_image TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;

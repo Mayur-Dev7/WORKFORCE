@@ -49,17 +49,20 @@ export const CheckInPage: React.FC = () => {
   const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
   const [insideGeofence, setInsideGeofence] = useState<boolean | null>(null);
 
+  // Reference face template
+  const [referenceImage, setReferenceImage] = useState<string | null>(null);
+
   // Request & Submission state
   const [submitting, setSubmitting] = useState(false);
   const [resultError, setResultError] = useState<{ title: string; message: string } | null>(null);
   const [livenessInstruction, setLivenessInstruction] = useState('Position face inside oval');
 
-  // Load office details & start camera
+  // Load office details, reference face & start camera
   useEffect(() => {
     let active = true;
 
     async function init() {
-      // 1. Fetch assigned office
+      // 1. Fetch assigned office & reference face
       if (user?.office_id) {
         try {
           const res = await api.get<ApiResponse<Office>>(`/offices/${user.office_id}`);
@@ -67,6 +70,15 @@ export const CheckInPage: React.FC = () => {
         } catch (e) {
           console.error(e);
         }
+      }
+
+      try {
+        const faceRes = await api.get('/users/self/face-template');
+        if (active && faceRes.data?.data?.referenceImage) {
+          setReferenceImage(faceRes.data.data.referenceImage);
+        }
+      } catch (e) {
+        console.warn('Could not fetch reference face', e);
       }
 
       // 2. Start webcam
@@ -244,6 +256,27 @@ export const CheckInPage: React.FC = () => {
           />
         )}
 
+        {!user?.face_enrolled && (
+          <Alert
+            type="warning"
+            showIcon
+            message="No Reference Face Enrolled"
+            description={
+              <span>
+                You must upload or capture your official reference photo before you can check in.{' '}
+                <Button
+                  type="primary"
+                  size="small"
+                  onClick={() => navigate('/employee/face-enrollment')}
+                >
+                  Upload Reference Face
+                </Button>
+              </span>
+            }
+            style={{ marginBottom: 20 }}
+          />
+        )}
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24 }}>
           {/* Left: Video / Camera Area */}
           <div>
@@ -258,7 +291,7 @@ export const CheckInPage: React.FC = () => {
 
               <div className="camera-status-badge">
                 {cameraReady ? (
-                  <Tag color="success">Camera Active</Tag>
+                  <Tag color="success">Live Camera Active</Tag>
                 ) : (
                   <Tag color="default">Initializing Camera...</Tag>
                 )}
@@ -266,6 +299,43 @@ export const CheckInPage: React.FC = () => {
 
               <div className="liveness-instruction-box">{livenessInstruction}</div>
             </div>
+
+            {/* Reference Face Comparison Badge / Card */}
+            {referenceImage && (
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: 12,
+                  background: '#f0f5ff',
+                  border: '1px solid #adc6ff',
+                  borderRadius: 10,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 16,
+                }}
+              >
+                <img
+                  src={referenceImage}
+                  alt="Reference Face"
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: 8,
+                    objectFit: 'cover',
+                    border: '2px solid #2f54eb',
+                  }}
+                />
+                <div>
+                  <Text strong style={{ color: '#1d39c4' }}>
+                    Uploaded Reference Template
+                  </Text>
+                  <br />
+                  <Text type="secondary" style={{ fontSize: 13 }}>
+                    Live webcam biometric scan is matched 1:1 against this uploaded reference face.
+                  </Text>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right: Real-time Multi-factor Verification Steps */}
@@ -288,7 +358,23 @@ export const CheckInPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 2. Face Detection */}
+                {/* 2. Reference Face Template */}
+                <div className="status-step-item">
+                  {user?.face_enrolled ? (
+                    <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
+                  ) : (
+                    <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18 }} />
+                  )}
+                  <div>
+                    <Text strong>Reference Face Enrolled</Text>
+                    <br />
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {user?.face_enrolled ? 'Reference photo stored ✓' : 'Upload photo required'}
+                    </Text>
+                  </div>
+                </div>
+
+                {/* 3. Live Face Match */}
                 <div className="status-step-item">
                   {faceDetected ? (
                     <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
@@ -296,10 +382,10 @@ export const CheckInPage: React.FC = () => {
                     <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18 }} />
                   )}
                   <div>
-                    <Text strong>Single Face Detected</Text>
+                    <Text strong>Live Face Match & Clarity</Text>
                     <br />
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      {faceDetected ? `Quality Score: ${(qualityScore * 100).toFixed(0)}%` : 'No face in oval guide'}
+                      {faceDetected ? `Quality: ${(qualityScore * 100).toFixed(0)}% (Matching reference)` : 'No live face in view'}
                     </Text>
                   </div>
                 </div>
