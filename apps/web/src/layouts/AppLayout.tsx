@@ -26,6 +26,7 @@ import {
   UserOutlined,
   LogoutOutlined,
   IdcardOutlined,
+  CalendarOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.js';
 import { PermissionKey } from '@workforce/shared';
@@ -105,6 +106,12 @@ export const AppLayout: React.FC = () => {
           label: 'My Attendance',
           onClick: () => navigate('/employee/attendance'),
         },
+        {
+          key: '/employee/leave',
+          icon: <CalendarOutlined />,
+          label: 'My Leave',
+          onClick: () => navigate('/employee/leave'),
+        },
       ],
     },
   ];
@@ -113,7 +120,9 @@ export const AppLayout: React.FC = () => {
   const canViewAdmin =
     hasPermission(PermissionKey.USER_READ) ||
     hasPermission(PermissionKey.OFFICE_READ) ||
-    hasPermission(PermissionKey.REPORTS_READ);
+    hasPermission(PermissionKey.REPORTS_READ) ||
+    hasPermission(PermissionKey.LEAVE_READ_TEAM) ||
+    hasPermission(PermissionKey.HOLIDAY_READ);
 
   if (canViewAdmin) {
     const adminChildren: any[] = [];
@@ -178,6 +187,24 @@ export const AppLayout: React.FC = () => {
         icon: <FileProtectOutlined />,
         label: 'Audit Trail',
         onClick: () => navigate('/admin/audit-logs'),
+      });
+    }
+
+    if (hasPermission(PermissionKey.LEAVE_READ_TEAM)) {
+      adminChildren.push({
+        key: '/admin/leave',
+        icon: <CalendarOutlined />,
+        label: 'Leave Management',
+        onClick: () => navigate('/admin/leave'),
+      });
+    }
+
+    if (hasPermission(PermissionKey.HOLIDAY_READ)) {
+      adminChildren.push({
+        key: '/admin/holidays',
+        icon: <CalendarOutlined style={{ color: '#fa8c16' }} />,
+        label: 'Holidays',
+        onClick: () => navigate('/admin/holidays'),
       });
     }
 

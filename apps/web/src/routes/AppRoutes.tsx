@@ -8,6 +8,7 @@ import { CheckInPage } from '../pages/employee/CheckInPage.js';
 import { CheckOutPage } from '../pages/employee/CheckOutPage.js';
 import { AttendanceHistoryPage } from '../pages/employee/AttendanceHistoryPage.js';
 import { SelfEnrollmentPage } from '../pages/employee/SelfEnrollmentPage.js';
+import { LeavePage } from '../pages/employee/LeavePage.js';
 import { AdminDashboard } from '../pages/admin/AdminDashboard.js';
 import { UsersPage } from '../pages/admin/UsersPage.js';
 import { FaceEnrollmentPage } from '../pages/admin/FaceEnrollmentPage.js';
@@ -16,6 +17,8 @@ import { DepartmentsPage } from '../pages/admin/DepartmentsPage.js';
 import { RolesPage } from '../pages/admin/RolesPage.js';
 import { ReportsPage } from '../pages/admin/ReportsPage.js';
 import { AuditLogsPage } from '../pages/admin/AuditLogsPage.js';
+import { LeaveManagementPage } from '../pages/admin/LeaveManagementPage.js';
+import { HolidaysPage } from '../pages/admin/HolidaysPage.js';
 import { PermissionKey } from '@workforce/shared';
 import { useAuth } from '../context/AuthContext.js';
 
@@ -63,6 +66,14 @@ export const AppRoutes: React.FC = () => {
           element={
             <ProtectedRoute permission={PermissionKey.ATTENDANCE_READ}>
               <AttendanceHistoryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="employee/leave"
+          element={
+            <ProtectedRoute permission={PermissionKey.LEAVE_READ_OWN}>
+              <LeavePage />
             </ProtectedRoute>
           }
         />
@@ -129,6 +140,22 @@ export const AppRoutes: React.FC = () => {
           element={
             <ProtectedRoute permission={PermissionKey.AUDIT_READ}>
               <AuditLogsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/leave"
+          element={
+            <ProtectedRoute permission={PermissionKey.LEAVE_READ_TEAM}>
+              <LeaveManagementPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/holidays"
+          element={
+            <ProtectedRoute permission={PermissionKey.HOLIDAY_READ}>
+              <HolidaysPage />
             </ProtectedRoute>
           }
         />
