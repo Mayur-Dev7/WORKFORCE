@@ -118,16 +118,21 @@ export const SelfEnrollmentPage: React.FC = () => {
   };
 
   // Upload handler
+  // Upload handler with automatic format conversion (HEIC -> JPG)
   const handleFileUpload = async (file: File) => {
     setAnalyzing(true);
-    setStatusMessage('Analyzing photo and detecting face...');
+    setStatusMessage('Checking image format and preparing converter...');
     try {
-      const result = await analyzeImageFile(file);
+      const result = await analyzeImageFile(file, (status) => setStatusMessage(status));
       setStagedPreview(result.previewUrl);
       setStagedEmbedding(result.embedding);
       setStagedQuality(Math.round(result.quality * 100));
+      if (result.converted) {
+        message.success('Photo automatically converted to standard JPG format and face detected!');
+      } else {
+        message.success('Face detected in uploaded image!');
+      }
       setStatusMessage('Face detected successfully! Review your photo and click Confirm to save.');
-      message.success('Face detected in uploaded image!');
     } catch (err: any) {
       message.error(err.message || 'Failed to detect face. Please upload a clear photo.');
       setStatusMessage(null);
@@ -291,7 +296,7 @@ export const SelfEnrollmentPage: React.FC = () => {
                 children: (
                   <Space direction="vertical" style={{ width: '100%' }} size="middle">
                     <Dragger
-                      accept="image/*"
+                      accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif,image/*"
                       multiple={false}
                       showUploadList={false}
                       beforeUpload={handleFileUpload}
@@ -304,9 +309,26 @@ export const SelfEnrollmentPage: React.FC = () => {
                         Click or drag a clear front-facing portrait photo here
                       </p>
                       <p className="ant-upload-hint">
-                        Supports JPEG, PNG, WEBP. Ensure good lighting and look straight at the camera.
+                        Supports standard JPG, PNG, WEBP, and <strong>HEIC/HEIF</strong> (automatically converted to JPG).
                       </p>
+                      <div style={{ marginTop: 8 }}>
+                        <Tag color="cyan">Automatic Mobile Photo & HEIC Converter Enabled</Tag>
+                      </div>
                     </Dragger>
+
+                    <div style={{ textAlign: 'center', marginTop: 8 }}>
+                      <Text type="secondary">Prefer snapping directly with your mobile camera? </Text>
+                      <Button
+                        type="link"
+                        icon={<CameraOutlined />}
+                        onClick={() => {
+                          setActiveTab('camera');
+                          startCamera();
+                        }}
+                      >
+                        Switch to Live Camera
+                      </Button>
+                    </div>
                   </Space>
                 ),
               },

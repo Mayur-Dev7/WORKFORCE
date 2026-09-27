@@ -135,16 +135,90 @@ export function captureVideoFrameAsBase64(video: HTMLVideoElement, maxDim = 640)
 }
 
 /**
- * Loads an uploaded File into a normalized canvas (max 640px) and extracts JPEG data URL.
- * Works seamlessly across desktop and mobile browsers (handles camera roll, EXIF, avoids CORS/memory traps).
+ * Detects whether a file/blob is in HEIC or HEIF format (by MIME type, extension, or ISO-BMFF magic bytes)
  */
-async function fileToNormalizedCanvas(file: File): Promise<{ canvas: HTMLCanvasElement; dataUrl: string }> {
+export async function isHeicFormat(file: Blob): Promise<boolean> {
+  const type = (file.type || '').toLowerCase();
+  if (type.includes('heic') || type.includes('heif')) {
+    return true;
+  }
+  if ('name' in file && typeof (file as any).name === 'string') {
+    const name = (file as any).name.toLowerCase();
+    if (name.endsWith('.heic') || name.endsWith('.heif')) {
+      return true;
+    }
+  }
+  // Check binary magic bytes for HEIC/HEIF headers (ISO Base Media File Format)
+  try {
+    const slice = file.slice(0, 32);
+    const buffer = await slice.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let str = '';
+    for (let i = 0; i < bytes.length; i++) {
+      str += String.fromCharCode(bytes[i]);
+    }
+    if (
+      str.includes('ftyp') &&
+      (str.includes('heic') ||
+        str.includes('heix') ||
+        str.includes('hevc') ||
+        str.includes('heim') ||
+        str.includes('heis') ||
+        str.includes('mif1') ||
+        str.includes('msf1'))
+    ) {
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+/**
+ * Automatically converts HEIC/HEIF and other mobile photo formats to standard JPEG Blob
+ */
+export async function convertToJpegBlob(
+  file: File | Blob,
+  onStatusUpdate?: (status: string) => void
+): Promise<{ blob: Blob; converted: boolean }> {
+  const isHeic = await isHeicFormat(file);
+
+  if (isHeic) {
+    onStatusUpdate?.('Detected HEIC/HEIF mobile photo. Converting to standard JPG...');
+    try {
+      const heic2anyModule = await import('heic2any');
+      const heic2any = heic2anyModule.default || heic2anyModule;
+      const converted = await heic2any({
+        blob: file,
+        toType: 'image/jpeg',
+        quality: 0.9,
+      });
+      const jpegBlob = (Array.isArray(converted) ? converted[0] : converted) as Blob;
+      return { blob: jpegBlob, converted: true };
+    } catch (err: any) {
+      console.warn('HEIC converter warning:', err);
+    }
+  }
+
+  return { blob: file, converted: false };
+}
+
+/**
+ * Loads an uploaded File into a normalized canvas (max 640px) and extracts JPEG data URL.
+ * Automatically converts HEIC/HEIF to JPEG and works seamlessly across desktop and mobile.
+ */
+async function fileToNormalizedCanvas(
+  file: File,
+  onStatusUpdate?: (status: string) => void
+): Promise<{ canvas: HTMLCanvasElement; dataUrl: string; converted: boolean }> {
   const maxDim = 640;
 
-  // Modern Path: createImageBitmap is native, hardware accelerated, auto-orients EXIF, and doesn't blow up memory
+  // 1. Automatically convert non-standard/HEIC formats to standard JPEG
+  const { blob: targetBlob, converted } = await convertToJpegBlob(file, onStatusUpdate);
+
+  // 2. Modern Path: createImageBitmap is native, hardware accelerated, auto-orients EXIF, and doesn't blow up memory
   if (typeof window !== 'undefined' && typeof window.createImageBitmap === 'function') {
     try {
-      const bitmap = await window.createImageBitmap(file);
+      const bitmap = await window.createImageBitmap(targetBlob);
       let width = bitmap.width;
       let height = bitmap.height;
       if (width > maxDim || height > maxDim) {
@@ -164,13 +238,13 @@ async function fileToNormalizedCanvas(file: File): Promise<{ canvas: HTMLCanvasE
       ctx.drawImage(bitmap, 0, 0, width, height);
       bitmap.close();
       const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-      return { canvas, dataUrl };
+      return { canvas, dataUrl, converted };
     } catch (bitmapErr) {
       console.warn('createImageBitmap failed, falling back to Image element:', bitmapErr);
     }
   }
 
-  // Fallback Path: HTMLImageElement via URL.createObjectURL or FileReader
+  // 3. Fallback Path: HTMLImageElement via URL.createObjectURL or FileReader
   return new Promise((resolve, reject) => {
     let objectUrl = '';
     const img = new Image();
@@ -208,7 +282,7 @@ async function fileToNormalizedCanvas(file: File): Promise<{ canvas: HTMLCanvasE
         ctx.drawImage(img, 0, 0, width, height);
         cleanup();
         const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        resolve({ canvas, dataUrl });
+        resolve({ canvas, dataUrl, converted });
       } catch (err) {
         cleanup();
         reject(err);
@@ -239,17 +313,17 @@ async function fileToNormalizedCanvas(file: File): Promise<{ canvas: HTMLCanvasE
           const ctx = canvas.getContext('2d');
           if (!ctx) return reject(new Error('Could not create canvas context'));
           ctx.drawImage(fallbackImg, 0, 0, width, height);
-          resolve({ canvas, dataUrl: canvas.toDataURL('image/jpeg', 0.85) });
+          resolve({ canvas, dataUrl: canvas.toDataURL('image/jpeg', 0.85), converted });
         };
-        fallbackImg.onerror = () => reject(new Error('Unable to decode the selected photo. Please choose a JPG, PNG, or WEBP photo.'));
+        fallbackImg.onerror = () => reject(new Error('Unable to decode the photo. Please select a standard JPG or PNG photo, or use the "Use Camera" tab to snap a selfie directly.'));
         fallbackImg.src = reader.result as string;
       };
       reader.onerror = () => reject(new Error('Failed to read image file from disk'));
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(targetBlob);
     };
 
     try {
-      objectUrl = URL.createObjectURL(file);
+      objectUrl = URL.createObjectURL(targetBlob);
       img.src = objectUrl;
     } catch {
       const reader = new FileReader();
@@ -257,22 +331,28 @@ async function fileToNormalizedCanvas(file: File): Promise<{ canvas: HTMLCanvasE
         img.src = reader.result as string;
       };
       reader.onerror = () => reject(new Error('Failed to read image file'));
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(targetBlob);
     }
   });
 }
 
 /**
- * Analyzes an uploaded File for face presence and generates embedding + compressed reference data URL
+ * Analyzes an uploaded File for face presence and generates embedding + compressed reference data URL.
+ * Automatically converts HEIC/HEIF images to JPEG format.
  */
-export async function analyzeImageFile(file: File): Promise<{
+export async function analyzeImageFile(
+  file: File,
+  onStatusUpdate?: (status: string) => void
+): Promise<{
   embedding: number[];
   quality: number;
   previewUrl: string;
+  converted: boolean;
 }> {
-  const { canvas, dataUrl } = await fileToNormalizedCanvas(file);
+  const { canvas, dataUrl, converted } = await fileToNormalizedCanvas(file, onStatusUpdate);
 
   try {
+    onStatusUpdate?.('Running biometric face analysis with MobileFaceNet...');
     const human = await getHuman();
     const result = await human.detect(canvas);
     const faces = result.face || [];
@@ -294,6 +374,7 @@ export async function analyzeImageFile(file: File): Promise<{
       embedding,
       quality,
       previewUrl: dataUrl,
+      converted,
     };
   } catch (err: any) {
     console.warn('Face model error on canvas:', err);
@@ -301,6 +382,7 @@ export async function analyzeImageFile(file: File): Promise<{
       embedding: generateClientSyntheticVector([100, 100, 200, 200]),
       quality: 0.9,
       previewUrl: dataUrl,
+      converted,
     };
   }
 }
