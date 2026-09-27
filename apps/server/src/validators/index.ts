@@ -64,6 +64,7 @@ export const CreateOfficeSchema = z.object({
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
   radius_meters: z.number().int().positive('Radius must be greater than 0 meters').default(150),
+  apply_to_all_employees: z.boolean().optional(),
 });
 
 export const UpdateOfficeSchema = z.object({
@@ -73,6 +74,7 @@ export const UpdateOfficeSchema = z.object({
   longitude: z.number().min(-180).max(180).optional(),
   radius_meters: z.number().int().positive().optional(),
   is_active: z.boolean().optional(),
+  apply_to_all_employees: z.boolean().optional(),
 });
 
 export const CreateDepartmentSchema = z.object({

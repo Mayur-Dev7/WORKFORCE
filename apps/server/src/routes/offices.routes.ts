@@ -11,5 +11,6 @@ router.get('/', requirePermission(PermissionKey.OFFICE_READ), officesController.
 router.post('/', requirePermission(PermissionKey.OFFICE_CREATE), officesController.create);
 router.get('/:id', requirePermission(PermissionKey.OFFICE_READ), officesController.getById);
 router.patch('/:id', requirePermission(PermissionKey.OFFICE_UPDATE), officesController.update);
+router.post('/:id/apply-to-all', requirePermission(PermissionKey.OFFICE_UPDATE), officesController.applyToAll);
 
 export default router;

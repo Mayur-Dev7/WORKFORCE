@@ -24,6 +24,7 @@ describe('Attendance Verification & Geofence Integration Tests', () => {
     const userRes = await pool.query<{ id: string }>(`SELECT id FROM users WHERE employee_code = 'EMP-101'`);
     if (userRes.rows[0]) {
       await pool.query(`DELETE FROM attendance_sessions WHERE user_id = $1`, [userRes.rows[0].id]);
+      await pool.query(`UPDATE face_templates SET embedding = $1 WHERE user_id = $2`, [alexValidEmbedding, userRes.rows[0].id]);
     }
 
     const res = await request(app)

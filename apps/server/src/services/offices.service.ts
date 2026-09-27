@@ -1,4 +1,5 @@
 import { officesRepository, OfficeRow } from '../repositories/offices.repository.js';
+import { usersRepository } from '../repositories/users.repository.js';
 import { auditLogsRepository } from '../repositories/auditLogs.repository.js';
 import { withTransaction } from '../lib/db.js';
 import { Office, AuditAction, ErrorCode } from '@workforce/shared';
@@ -39,21 +40,39 @@ export class OfficesService {
       latitude: number;
       longitude: number;
       radius_meters?: number;
+      apply_to_all_employees?: boolean;
     }
   ): Promise<Office> {
     return withTransaction(async (client) => {
       const officeRow = await officesRepository.create(data, client);
+      let affectedCount = 0;
+
+      if (data.apply_to_all_employees) {
+        affectedCount = await usersRepository.updateOfficeForAllInCompany(
+          data.company_id,
+          officeRow.id,
+          client
+        );
+      }
+
       await auditLogsRepository.create(
         {
           actor_user_id: actorUserId,
           action: AuditAction.OFFICE_CREATED,
           entity_type: 'office',
           entity_id: officeRow.id,
-          metadata: { name: officeRow.name, radiusMeters: officeRow.radius_meters },
+          metadata: {
+            name: officeRow.name,
+            radiusMeters: officeRow.radius_meters,
+            appliedToAllEmployees: !!data.apply_to_all_employees,
+            affectedEmployees: affectedCount,
+          },
         },
         client
       );
-      return mapRowToOffice(officeRow);
+
+      const refreshed = await officesRepository.findById(officeRow.id, client);
+      return mapRowToOffice(refreshed || officeRow);
     });
   }
 
@@ -67,6 +86,7 @@ export class OfficesService {
       longitude?: number;
       radius_meters?: number;
       is_active?: boolean;
+      apply_to_all_employees?: boolean;
     }
   ): Promise<Office> {
     return withTransaction(async (client) => {
@@ -77,18 +97,70 @@ export class OfficesService {
         throw err;
       }
 
+      let affectedCount = 0;
+      if (data.apply_to_all_employees) {
+        affectedCount = await usersRepository.updateOfficeForAllInCompany(
+          officeRow.company_id,
+          id,
+          client
+        );
+      }
+
       await auditLogsRepository.create(
         {
           actor_user_id: actorUserId,
           action: data.is_active === false ? AuditAction.OFFICE_DISABLED : AuditAction.OFFICE_UPDATED,
           entity_type: 'office',
           entity_id: id,
-          metadata: data,
+          metadata: {
+            ...data,
+            appliedToAllEmployees: !!data.apply_to_all_employees,
+            affectedEmployees: affectedCount,
+          },
         },
         client
       );
 
-      return mapRowToOffice(officeRow);
+      const refreshed = await officesRepository.findById(id, client);
+      return mapRowToOffice(refreshed || officeRow);
+    });
+  }
+
+  async applyToAllCompanyEmployees(
+    actorUserId: string,
+    companyId: string,
+    officeId: string
+  ): Promise<{ affectedEmployees: number }> {
+    return withTransaction(async (client) => {
+      const office = await officesRepository.findById(officeId, client);
+      if (!office) {
+        const err = new Error('Office not found');
+        (err as any).code = ErrorCode.VALIDATION_ERROR;
+        throw err;
+      }
+
+      const affectedEmployees = await usersRepository.updateOfficeForAllInCompany(
+        companyId,
+        officeId,
+        client
+      );
+
+      await auditLogsRepository.create(
+        {
+          actor_user_id: actorUserId,
+          action: AuditAction.USER_UPDATED,
+          entity_type: 'office',
+          entity_id: officeId,
+          metadata: {
+            assignedOfficeToAllEmployees: true,
+            officeName: office.name,
+            affectedEmployees,
+          },
+        },
+        client
+      );
+
+      return { affectedEmployees };
     });
   }
 }

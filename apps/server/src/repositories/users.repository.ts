@@ -271,6 +271,17 @@ export class UsersRepository {
       [id]
     );
   }
+
+  async updateOfficeForAllInCompany(companyId: string, officeId: string, client?: PoolClient): Promise<number> {
+    const queryClient = client || pool;
+    const query = `
+      UPDATE users
+      SET office_id = $1, updated_at = NOW()
+      WHERE company_id = $2
+    `;
+    const res = await queryClient.query(query, [officeId, companyId]);
+    return res.rowCount ?? 0;
+  }
 }
 
 export const usersRepository = new UsersRepository();

@@ -17,6 +17,7 @@ describe('Attendance Concurrency Protection Tests', () => {
     const userRes = await pool.query<{ id: string }>(`SELECT id FROM users WHERE employee_code = 'EMP-101'`);
     const alexId = userRes.rows[0].id;
     await pool.query(`DELETE FROM attendance_sessions WHERE user_id = $1`, [alexId]);
+    await pool.query(`UPDATE face_templates SET embedding = $1 WHERE user_id = $2`, [alexValidEmbedding, alexId]);
 
     const res = await request(app)
       .post('/api/v1/auth/login')

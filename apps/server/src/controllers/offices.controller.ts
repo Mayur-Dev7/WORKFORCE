@@ -60,6 +60,30 @@ export class OfficesController {
       next(err);
     }
   }
+
+  async applyToAll(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const companyId = req.user!.companyId;
+      if (!companyId) {
+        res.status(400).json({
+          success: false,
+          error: { code: ErrorCode.VALIDATION_ERROR, message: 'Company ID required' },
+        });
+        return;
+      }
+      const result = await officesService.applyToAllCompanyEmployees(
+        req.user!.userId,
+        companyId,
+        req.params.id
+      );
+      res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 export const officesController = new OfficesController();
