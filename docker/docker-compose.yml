@@ -1,0 +1,47 @@
+version: "3.8"
+
+networks:
+  workforce_access_network:
+    name: workforce_access_network
+    driver: bridge
+
+volumes:
+  workforce_access_postgres_data:
+    name: workforce_access_postgres_data
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: workforce_access_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-workforce_access_db}
+      POSTGRES_USER: ${POSTGRES_USER:-workforce_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-workforce_secure_pass_2026}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - workforce_access_postgres_data:/var/lib/postgresql/data
+    networks:
+      - workforce_access_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-workforce_admin} -d ${POSTGRES_DB:-workforce_access_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: workforce_access_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@workforce.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin_workforce_2026}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "${PGADMIN_HOST_PORT:-5051}:80"
+    networks:
+      - workforce_access_network
+    depends_on:
+      postgres:
+        condition: service_healthy

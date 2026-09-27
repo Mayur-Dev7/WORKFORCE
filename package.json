@@ -1,0 +1,28 @@
+{
+  "name": "workforce-access",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n \"server,web\" -c \"blue,green\" \"npm run dev:server\" \"npm run dev:web\"",
+    "dev:server": "npm run --workspace=apps/server dev",
+    "dev:web": "npm run --workspace=apps/web dev",
+    "build": "npm run --workspace=packages/shared build && npm run --workspace=apps/server build && npm run --workspace=apps/web build",
+    "test": "npm run test:server && npm run test:web",
+    "test:server": "npm run --workspace=apps/server test",
+    "test:web": "npm run --workspace=apps/web test",
+    "db:migrate": "npm run --workspace=apps/server db:migrate",
+    "db:migrate:down": "npm run --workspace=apps/server db:migrate:down",
+    "db:migrate:create": "npm run --workspace=apps/server db:migrate:create",
+    "db:seed": "npm run --workspace=apps/server db:seed",
+    "lint": "npm run --workspace=packages/shared lint && npm run --workspace=apps/server lint && npm run --workspace=apps/web lint",
+    "typecheck": "npm run --workspace=packages/shared typecheck && npm run --workspace=apps/server typecheck && npm run --workspace=apps/web typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  }
+}
