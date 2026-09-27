@@ -396,3 +396,23 @@ function generateClientSyntheticVector(box: [number, number, number, number] = [
   const norm = Math.sqrt(raw.reduce((sum, v) => sum + v * v, 0));
   return raw.map((v) => Number((v / norm).toFixed(6)));
 }
+
+/**
+ * Combines 3–5 captured or uploaded face embeddings into a single normalized centroid vector.
+ * Averages each dimension across all sample poses and normalizes the resulting vector.
+ */
+export function buildCentroidTemplate(embeddings: number[][]): number[] {
+  if (embeddings.length === 0) return [];
+  if (embeddings.length === 1) return embeddings[0];
+  const dim = embeddings[0].length;
+  const sum = new Array(dim).fill(0);
+  for (const emb of embeddings) {
+    for (let i = 0; i < dim; i++) {
+      sum[i] += emb[i];
+    }
+  }
+  const avg = sum.map((v) => v / embeddings.length);
+  const norm = Math.sqrt(avg.reduce((s, v) => s + v * v, 0));
+  return avg.map((v) => Number((v / (norm || 1)).toFixed(6)));
+}
+
