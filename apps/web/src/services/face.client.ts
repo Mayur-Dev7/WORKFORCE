@@ -211,7 +211,7 @@ export async function analyzeImageFile(file: File): Promise<{
 function generateClientSyntheticVector(box: [number, number, number, number] = [100, 100, 200, 200]): number[] {
   const seed = (box[0] * 31 + box[1] * 17 + box[2] * 13 + box[3] * 7) || 42;
   const raw: number[] = [];
-  for (let i = 0; i < 128; i++) {
+  for (let i = 0; i < 1024; i++) {
     raw.push(Math.sin(i * seed + 1) * Math.cos(seed));
   }
   const norm = Math.sqrt(raw.reduce((sum, v) => sum + v * v, 0));

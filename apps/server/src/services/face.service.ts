@@ -103,6 +103,16 @@ export class FaceService {
       };
     }
 
+    if (candidateEmbedding.length !== enrolledEmbedding.length) {
+      return {
+        matched: false,
+        similarity: 0,
+        threshold: effectiveThreshold,
+        error: ErrorCode.FACE_MISMATCH,
+        message: `Biometric template dimension mismatch (${candidateEmbedding.length} vs ${enrolledEmbedding.length}). Please re-enroll your reference face photo to update to the current model.`,
+      };
+    }
+
     const similarity = cosineSimilarity(candidateEmbedding, enrolledEmbedding);
     const matched = similarity >= effectiveThreshold;
 

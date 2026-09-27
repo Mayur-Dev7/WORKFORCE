@@ -2,10 +2,10 @@ import bcrypt from 'bcrypt';
 import { pool } from '../../src/lib/db.js';
 import { RoleName, PermissionKey } from '@workforce/shared';
 
-// Pre-calculated 128-dimension normalized dummy face embedding for Alex Mercer (for reproducible tests & dev)
+// 1024-dimension normalized face embedding matching @vladmandic/human MobileFaceNet/InsightFace
 export function generateSyntheticEmbedding(seedNum = 1): number[] {
   const raw: number[] = [];
-  for (let i = 0; i < 128; i++) {
+  for (let i = 0; i < 1024; i++) {
     raw.push(Math.sin(i * seedNum + 1) * Math.cos(seedNum));
   }
   const norm = Math.sqrt(raw.reduce((sum, val) => sum + val * val, 0));

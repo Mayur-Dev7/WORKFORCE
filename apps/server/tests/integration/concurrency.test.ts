@@ -8,14 +8,19 @@ describe('Attendance Concurrency Protection Tests', () => {
   const app = createApp();
 
   let alexToken = '';
-  const validLat = 37.774929;
-  const validLon = -122.419416;
+  let validLat = 37.774929;
+  let validLon = -122.419416;
   const alexValidEmbedding = generateSyntheticEmbedding(42);
 
   beforeAll(async () => {
     // Clean any prior open session for Alex Mercer
-    const userRes = await pool.query<{ id: string }>(`SELECT id FROM users WHERE employee_code = 'EMP-101'`);
+    const userRes = await pool.query<{ id: string; office_id: string }>(`SELECT id, office_id FROM users WHERE employee_code = 'EMP-101'`);
     const alexId = userRes.rows[0].id;
+    const officeRes = await pool.query<{ latitude: number; longitude: number }>(`SELECT latitude, longitude FROM offices WHERE id = $1`, [userRes.rows[0].office_id]);
+    if (officeRes.rows[0]) {
+      validLat = officeRes.rows[0].latitude;
+      validLon = officeRes.rows[0].longitude;
+    }
     await pool.query(`DELETE FROM attendance_sessions WHERE user_id = $1`, [alexId]);
     await pool.query(`UPDATE face_templates SET embedding = $1 WHERE user_id = $2`, [alexValidEmbedding, alexId]);
 

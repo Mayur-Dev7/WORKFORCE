@@ -8,7 +8,7 @@ export function cosineSimilarity(embeddingA: number[], embeddingB: number[]): nu
   }
 
   if (embeddingA.length !== embeddingB.length) {
-    throw new Error(`Embedding dimensions do not match: ${embeddingA.length} vs ${embeddingB.length}`);
+    return 0;
   }
 
   let dotProduct = 0;
