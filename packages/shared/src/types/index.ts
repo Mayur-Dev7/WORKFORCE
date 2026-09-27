@@ -185,3 +185,84 @@ export interface AttendanceReportItem {
   check_in_face_similarity: number;
   status: 'COMPLETED' | 'ACTIVE';
 }
+
+// ─── Leave Management ────────────────────────────────────────────────────────
+
+export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+export interface LeaveType {
+  id: string;
+  company_id: string;
+  code: string;
+  name: string;
+  annual_quota: number;
+  is_paid: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeaveBalance {
+  id: string;
+  user_id: string;
+  leave_type_id: string;
+  leave_year: number;
+  allocated_days: number;
+  used_days: number;
+  pending_days: number;
+  created_at: string;
+  updated_at: string;
+
+  // Joined
+  leave_type_code?: string;
+  leave_type_name?: string;
+  remaining_days?: number;
+}
+
+export interface LeaveRequest {
+  id: string;
+  user_id: string;
+  leave_type_id: string;
+  start_date: string;
+  end_date: string;
+  days_requested: number;
+  status: LeaveStatus;
+  reason: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  reviewer_note: string | null;
+  created_at: string;
+  updated_at: string;
+
+  // Joined
+  user_name?: string;
+  employee_code?: string;
+  leave_type_name?: string;
+  leave_type_code?: string;
+  reviewer_name?: string;
+}
+
+// ─── Holiday Calendar ────────────────────────────────────────────────────────
+
+export interface Holiday {
+  id: string;
+  company_id: string;
+  office_id: string | null;
+  name: string;
+  description: string | null;
+  holiday_date: string;
+  is_recurring: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WeeklyHolidayRule {
+  id: string;
+  company_id: string;
+  day_of_week: number;
+  week_of_month: number | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}

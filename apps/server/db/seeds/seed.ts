@@ -96,6 +96,17 @@ export async function runSeed(): Promise<void> {
 
       { key: PermissionKey.ROLE_READ, desc: 'View roles and permissions' },
       { key: PermissionKey.ROLE_UPDATE, desc: 'Update role permissions' },
+
+      // Leave Management
+      { key: PermissionKey.LEAVE_APPLY, desc: 'Apply for leave' },
+      { key: PermissionKey.LEAVE_READ_OWN, desc: 'View own leave requests and balances' },
+      { key: PermissionKey.LEAVE_READ_TEAM, desc: 'View all company leave requests and balances' },
+      { key: PermissionKey.LEAVE_APPROVE, desc: 'Approve or reject leave requests' },
+      { key: PermissionKey.LEAVE_TYPE_MANAGE, desc: 'Manage leave types and allocate balances' },
+
+      // Holiday Calendar
+      { key: PermissionKey.HOLIDAY_READ, desc: 'View holiday calendar' },
+      { key: PermissionKey.HOLIDAY_MANAGE, desc: 'Create, update and delete holidays and weekly rules' },
     ];
 
     for (const p of allPermissions) {
@@ -154,6 +165,14 @@ export async function runSeed(): Promise<void> {
       PermissionKey.REPORTS_EXPORT,
       PermissionKey.AUDIT_READ,
       PermissionKey.ROLE_READ,
+      // Leave & Holiday
+      PermissionKey.LEAVE_APPLY,
+      PermissionKey.LEAVE_READ_OWN,
+      PermissionKey.LEAVE_READ_TEAM,
+      PermissionKey.LEAVE_APPROVE,
+      PermissionKey.LEAVE_TYPE_MANAGE,
+      PermissionKey.HOLIDAY_READ,
+      PermissionKey.HOLIDAY_MANAGE,
     ];
     await client.query(`
       INSERT INTO role_permissions (role_id, permission_id)
@@ -171,6 +190,12 @@ export async function runSeed(): Promise<void> {
       PermissionKey.ATTENDANCE_READ,
       PermissionKey.ATTENDANCE_READ_TEAM,
       PermissionKey.REPORTS_READ,
+      // Leave & Holiday
+      PermissionKey.LEAVE_APPLY,
+      PermissionKey.LEAVE_READ_OWN,
+      PermissionKey.LEAVE_READ_TEAM,
+      PermissionKey.LEAVE_APPROVE,
+      PermissionKey.HOLIDAY_READ,
     ];
     await client.query(`
       INSERT INTO role_permissions (role_id, permission_id)
@@ -185,12 +210,17 @@ export async function runSeed(): Promise<void> {
       PermissionKey.ATTENDANCE_CHECKIN,
       PermissionKey.ATTENDANCE_CHECKOUT,
       PermissionKey.ATTENDANCE_READ,
+      // Leave & Holiday
+      PermissionKey.LEAVE_APPLY,
+      PermissionKey.LEAVE_READ_OWN,
+      PermissionKey.HOLIDAY_READ,
     ];
     await client.query(`
       INSERT INTO role_permissions (role_id, permission_id)
       SELECT $1, id FROM permissions WHERE key = ANY($2::text[])
       ON CONFLICT DO NOTHING;
     `, [roleMap[RoleName.EMPLOYEE], employeePerms]);
+
 
     // 7. Seed Users
     const passwordHash = await bcrypt.hash('Password123!', 10);
@@ -295,8 +325,27 @@ export async function runSeed(): Promise<void> {
       }
     }
 
+    // 8. Seed Leave Types (CASUAL + SICK) — safe to run multiple times (ON CONFLICT DO UPDATE)
+    console.log('🌱 Seeding leave types...');
+    const defaultLeaveTypes = [
+      { code: 'CASUAL', name: 'Casual Leave', annual_quota: 12, is_paid: false },
+      { code: 'SICK',   name: 'Sick Leave',   annual_quota: 5,  is_paid: false },
+    ];
+    for (const lt of defaultLeaveTypes) {
+      await client.query(`
+        INSERT INTO leave_types (company_id, code, name, annual_quota, is_paid)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (company_id, code) DO UPDATE
+          SET name = EXCLUDED.name,
+              annual_quota = EXCLUDED.annual_quota,
+              is_paid = EXCLUDED.is_paid,
+              updated_at = NOW();
+      `, [companyId, lt.code, lt.name, lt.annual_quota, lt.is_paid]);
+    }
+
     await client.query('COMMIT');
     console.log('✅ Database seed completed successfully!');
+
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('❌ Failed to seed database:', error);

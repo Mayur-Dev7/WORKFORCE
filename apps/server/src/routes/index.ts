@@ -7,6 +7,8 @@ import attendanceRoutes from './attendance.routes.js';
 import reportsRoutes from './reports.routes.js';
 import auditRoutes from './audit.routes.js';
 import rolesRoutes from './roles.routes.js';
+import leaveRoutes from './leave.routes.js';
+import holidaysRoutes from './holidays.routes.js';
 
 const apiV1Router = Router();
 
@@ -18,5 +20,7 @@ apiV1Router.use('/attendance', attendanceRoutes);
 apiV1Router.use('/reports', reportsRoutes);
 apiV1Router.use('/audit-logs', auditRoutes);
 apiV1Router.use('/roles', rolesRoutes);
+apiV1Router.use('/leave', leaveRoutes);
+apiV1Router.use('/holidays', holidaysRoutes);
 
 export default apiV1Router;
