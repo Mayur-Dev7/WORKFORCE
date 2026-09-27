@@ -265,7 +265,7 @@ export const SelfEnrollmentPage: React.FC = () => {
                   <br />
                   <Text type="secondary">Office: {user?.office_name || 'San Francisco HQ'}</Text>
                   <br />
-                  <Tag color="blue" style={{ marginTop: 6 }}>128-D Biometric Embedding Stored</Tag>
+                  <Tag color="blue" style={{ marginTop: 6 }}>1024-D Biometric Embedding Stored</Tag>
                 </Col>
               </Row>
             </Card>
