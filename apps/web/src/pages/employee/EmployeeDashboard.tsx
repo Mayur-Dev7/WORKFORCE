@@ -13,6 +13,7 @@ import {
   Typography,
   Spin,
   Descriptions,
+  message,
 } from 'antd';
 import {
   CheckCircleOutlined,
@@ -70,8 +71,12 @@ export const EmployeeDashboard: React.FC = () => {
         const off = officeRes.data.data;
         setOffice(off);
 
-        // Get browser coordinates
-        if ('geolocation' in navigator) {
+        // Resilient location fetching with high-accuracy fallback
+        const obtainCoords = (highAccuracy: boolean) => {
+          if (!('geolocation' in navigator)) {
+            setGeoError('Geolocation not supported by browser');
+            return;
+          }
           navigator.geolocation.getCurrentPosition(
             (pos) => {
               const dist = calculateDistance(
@@ -84,11 +89,22 @@ export const EmployeeDashboard: React.FC = () => {
               setGeoError(null);
             },
             (err) => {
-              setGeoError(`Location access: ${err.message}`);
+              if (highAccuracy) {
+                // Indoor Wi-Fi or mobile satellite delay fallback
+                obtainCoords(false);
+              } else {
+                setGeoError(`Location detection: ${err.message}. Tap "Retry Location" to grant permission.`);
+              }
             },
-            { enableHighAccuracy: true, timeout: 5000 }
+            {
+              enableHighAccuracy: highAccuracy,
+              timeout: highAccuracy ? 10000 : 15000,
+              maximumAge: 30000,
+            }
           );
-        }
+        };
+
+        obtainCoords(true);
       }
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
@@ -96,6 +112,31 @@ export const EmployeeDashboard: React.FC = () => {
       setLoading(false);
     }
   }, [user?.office_id]);
+
+  const refreshLocation = () => {
+    if (!office || !('geolocation' in navigator)) return;
+    setUserDistance(null);
+    setGeoError(null);
+    message.loading({ content: 'Detecting location...', key: 'loc' });
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const dist = calculateDistance(
+          pos.coords.latitude,
+          pos.coords.longitude,
+          office.latitude,
+          office.longitude
+        );
+        setUserDistance(dist);
+        setGeoError(null);
+        message.success({ content: `Location updated: ${dist}m from office`, key: 'loc' });
+      },
+      (err) => {
+        setGeoError(`Location access (${err.message}). Check browser permissions.`);
+        message.warning({ content: `GPS error: ${err.message}. Check browser permissions.`, key: 'loc' });
+      },
+      { enableHighAccuracy: false, timeout: 12000 }
+    );
+  };
 
   useEffect(() => {
     loadData();
@@ -195,8 +236,13 @@ export const EmployeeDashboard: React.FC = () => {
                   </Tag>
                 )}
                 {userDistance === null && (
-                  <Tag icon={<EnvironmentOutlined />} color="default">
-                    Detecting Location...
+                  <Tag
+                    icon={<EnvironmentOutlined />}
+                    color={geoError ? 'warning' : 'default'}
+                    style={{ cursor: 'pointer' }}
+                    onClick={refreshLocation}
+                  >
+                    {geoError ? 'Location Unavailable (Tap to Retry)' : 'Detecting Location... (Tap to Refresh)'}
                   </Tag>
                 )}
               </Space>

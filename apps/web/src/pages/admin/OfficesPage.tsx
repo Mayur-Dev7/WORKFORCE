@@ -14,7 +14,6 @@ import {
   Typography,
   Alert,
   Popconfirm,
-  Tooltip,
   Divider,
   Row,
   Col,
@@ -25,13 +24,12 @@ import {
   EditOutlined,
   CompassOutlined,
   TeamOutlined,
-  CheckCircleOutlined,
-  InfoCircleOutlined,
   AimOutlined,
 } from '@ant-design/icons';
 import { api } from '../../services/api.js';
 import { Office, ApiResponse, PermissionKey } from '@workforce/shared';
 import { PermissionGate } from '../../components/common/PermissionGate.js';
+import { MapPicker } from '../../components/common/MapPicker.js';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -44,12 +42,14 @@ export const OfficesPage: React.FC = () => {
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [createForm] = Form.useForm();
   const [creating, setCreating] = useState(false);
+  const [createCoords, setCreateCoords] = useState({ lat: 37.774929, lon: -122.419416, radius: 150 });
 
   // Edit Modal
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingOffice, setEditingOffice] = useState<Office | null>(null);
   const [editForm] = Form.useForm();
   const [updating, setUpdating] = useState(false);
+  const [editCoords, setEditCoords] = useState({ lat: 37.774929, lon: -122.419416, radius: 150 });
 
   // Quick coordinate paste string
   const [pasteCoordInput, setPasteCoordInput] = useState('');
@@ -71,7 +71,7 @@ export const OfficesPage: React.FC = () => {
   }, []);
 
   // Browser Geolocation auto-detection
-  const handleDetectLocation = (formInstance: any) => {
+  const handleDetectLocation = (formInstance: any, setCoordsFn: any) => {
     if (!('geolocation' in navigator)) {
       message.error('Geolocation is not supported by your browser.');
       return;
@@ -85,13 +85,14 @@ export const OfficesPage: React.FC = () => {
           latitude: lat,
           longitude: lon,
         });
+        setCoordsFn((prev: any) => ({ ...prev, lat, lon }));
         message.success(
           `GPS location captured: ${lat}, ${lon} (Accuracy: ±${Math.round(pos.coords.accuracy)}m)`
         );
         setDetectingLocation(false);
       },
       (err) => {
-        message.error(`GPS Error: ${err.message}. Please input coordinates manually.`);
+        message.error(`GPS Error: ${err.message}. Please select on the map or input coordinates manually.`);
         setDetectingLocation(false);
       },
       { enableHighAccuracy: true, timeout: 10000 }
@@ -99,7 +100,7 @@ export const OfficesPage: React.FC = () => {
   };
 
   // Coordinate parser (e.g., "37.774929, -122.419416")
-  const handleParseCoordinates = (val: string, formInstance: any) => {
+  const handleParseCoordinates = (val: string, formInstance: any, setCoordsFn: any) => {
     setPasteCoordInput(val);
     const cleaned = val.replace(/[^\d.,\-]/g, ' ');
     const parts = cleaned.split(/[\s,]+/).filter(Boolean).map(Number);
@@ -107,9 +108,25 @@ export const OfficesPage: React.FC = () => {
       const [lat, lon] = parts;
       if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
         formInstance.setFieldsValue({ latitude: lat, longitude: lon });
+        setCoordsFn((prev: any) => ({ ...prev, lat, lon }));
         message.success(`Coordinates applied: Lat ${lat}, Lon ${lon}`);
       }
     }
+  };
+
+  const handleOpenCreateModal = () => {
+    // Default to the first existing office coords or standard default
+    const defaultLat = offices[0]?.latitude || 37.774929;
+    const defaultLon = offices[0]?.longitude || -122.419416;
+    setCreateCoords({ lat: defaultLat, lon: defaultLon, radius: 150 });
+    createForm.setFieldsValue({
+      latitude: defaultLat,
+      longitude: defaultLon,
+      radius_meters: 150,
+      apply_to_all_employees: true,
+    });
+    setPasteCoordInput('');
+    setCreateModalVisible(true);
   };
 
   const handleCreate = async (values: any) => {
@@ -138,6 +155,11 @@ export const OfficesPage: React.FC = () => {
 
   const handleEdit = (office: Office) => {
     setEditingOffice(office);
+    setEditCoords({
+      lat: office.latitude,
+      lon: office.longitude,
+      radius: office.radius_meters,
+    });
     editForm.setFieldsValue({
       name: office.name,
       address: office.address,
@@ -245,7 +267,7 @@ export const OfficesPage: React.FC = () => {
         <Space>
           <PermissionGate permission={PermissionKey.OFFICE_UPDATE}>
             <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(r)}>
-              Edit Coordinates
+              Edit on Map
             </Button>
           </PermissionGate>
 
@@ -277,9 +299,8 @@ export const OfficesPage: React.FC = () => {
               Office Geofences & Employee Attendance Coordinates
             </Title>
             <Paragraph type="secondary" style={{ marginTop: 4, marginBottom: 0 }}>
-              Configure the exact physical coordinates (Latitude, Longitude, Radius) of company offices.
-              You can automatically detect your current GPS location, paste map coordinates, and
-              apply the selected office geofence to <strong>all employees</strong> under your company.
+              Pick and choose your exact office area on the interactive map. Search any city, address, or landmark,
+              drag the pin to your office building, and choose to apply that geofence to <strong>all employees</strong> in your company.
             </Paragraph>
           </Col>
 
@@ -289,9 +310,9 @@ export const OfficesPage: React.FC = () => {
                 type="primary"
                 size="large"
                 icon={<PlusOutlined />}
-                onClick={() => setCreateModalVisible(true)}
+                onClick={handleOpenCreateModal}
               >
-                Add Office Geofence
+                Pick Office on Map
               </Button>
             </PermissionGate>
           </Col>
@@ -318,7 +339,7 @@ export const OfficesPage: React.FC = () => {
 
       {/* Create Office Modal */}
       <Modal
-        title="Add New Office Geofence"
+        title="Choose Office Location on Map"
         open={createModalVisible}
         onCancel={() => {
           setCreateModalVisible(false);
@@ -326,91 +347,98 @@ export const OfficesPage: React.FC = () => {
         }}
         footer={null}
         destroyOnClose
-        width={560}
+        width={720}
       >
         <Form form={createForm} layout="vertical" onFinish={handleCreate}>
-          <Form.Item
-            name="name"
-            label="Office Name"
-            rules={[{ required: true, message: 'Office name is required' }]}
-          >
-            <Input placeholder="e.g. Headquarters / Main Branch" />
-          </Form.Item>
-
-          <Form.Item name="address" label="Street Address">
-            <Input placeholder="e.g. 100 Tech Boulevard, Suite 400" />
-          </Form.Item>
-
-          <Divider orientation="left" style={{ margin: '12px 0 16px', fontSize: 13 }}>
-            GPS Coordinates Selection
-          </Divider>
-
-          {/* Quick Helper Tools */}
-          <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 8, marginBottom: 16 }}>
-            <Text strong style={{ fontSize: 13, display: 'block', marginBottom: 6 }}>
-              Quick Location Tools:
-            </Text>
-            <Space wrap>
-              <Button
-                size="small"
-                icon={<CompassOutlined />}
-                loading={detectingLocation}
-                onClick={() => handleDetectLocation(createForm)}
-              >
-                Detect My Current GPS Location
-              </Button>
-            </Space>
-
-            <div style={{ marginTop: 8 }}>
-              <Input
-                size="small"
-                placeholder="Or paste 'Lat, Lon' (e.g. 37.7749, -122.4194)"
-                value={pasteCoordInput}
-                onChange={(e) => handleParseCoordinates(e.target.value, createForm)}
-                prefix={<AimOutlined style={{ color: '#8c8c8c' }} />}
-              />
-            </div>
-          </div>
-
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
-                name="latitude"
-                label="Latitude (-90 to 90)"
-                rules={[{ required: true, message: 'Valid latitude required' }]}
+                name="name"
+                label="Office Name"
+                rules={[{ required: true, message: 'Office name is required' }]}
               >
-                <InputNumber
-                  style={{ width: '100%' }}
-                  step={0.000001}
-                  precision={6}
-                  placeholder="e.g. 37.774929"
-                />
+                <Input placeholder="e.g. Headquarters / Main Branch" />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item
-                name="longitude"
-                label="Longitude (-180 to 180)"
-                rules={[{ required: true, message: 'Valid longitude required' }]}
-              >
-                <InputNumber
-                  style={{ width: '100%' }}
-                  step={0.000001}
-                  precision={6}
-                  placeholder="e.g. -122.419416"
-                />
+              <Form.Item name="address" label="Street Address">
+                <Input placeholder="e.g. 100 Tech Boulevard, Suite 400" />
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item
-            name="radius_meters"
-            label="Allowed Geofence Radius (Meters)"
-            initialValue={150}
-            rules={[{ required: true, message: 'Radius is required' }]}
-          >
-            <InputNumber style={{ width: '100%' }} min={10} max={10000} />
-          </Form.Item>
+          <Divider orientation="left" style={{ margin: '8px 0 12px', fontSize: 13 }}>
+            Interactive Map Area Selector (OpenStreetMap)
+          </Divider>
+
+          {/* Interactive Map Picker */}
+          <MapPicker
+            latitude={createCoords.lat}
+            longitude={createCoords.lon}
+            radiusMeters={createCoords.radius}
+            onChange={(lat, lon) => {
+              setCreateCoords((prev) => ({ ...prev, lat, lon }));
+              createForm.setFieldsValue({ latitude: lat, longitude: lon });
+            }}
+          />
+
+          <Row gutter={16} style={{ marginTop: 12 }}>
+            <Col span={8}>
+              <Form.Item
+                name="latitude"
+                label="Latitude"
+                rules={[{ required: true, message: 'Latitude is required' }]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  step={0.000001}
+                  precision={6}
+                  onChange={(val) => {
+                    if (typeof val === 'number') {
+                      setCreateCoords((prev) => ({ ...prev, lat: val }));
+                    }
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="longitude"
+                label="Longitude"
+                rules={[{ required: true, message: 'Longitude is required' }]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  step={0.000001}
+                  precision={6}
+                  onChange={(val) => {
+                    if (typeof val === 'number') {
+                      setCreateCoords((prev) => ({ ...prev, lon: val }));
+                    }
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="radius_meters"
+                label="Perimeter Radius (Meters)"
+                initialValue={150}
+                rules={[{ required: true, message: 'Radius is required' }]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={10}
+                  max={10000}
+                  onChange={(val) => {
+                    if (typeof val === 'number') {
+                      setCreateCoords((prev) => ({ ...prev, radius: val }));
+                    }
+                  }}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
 
           <div
             style={{
@@ -456,7 +484,7 @@ export const OfficesPage: React.FC = () => {
 
       {/* Edit Office Modal */}
       <Modal
-        title={`Edit Geofence - ${editingOffice?.name}`}
+        title={`Edit Geofence on Map - ${editingOffice?.name}`}
         open={editModalVisible}
         onCancel={() => {
           setEditModalVisible(false);
@@ -464,68 +492,85 @@ export const OfficesPage: React.FC = () => {
         }}
         footer={null}
         destroyOnClose
-        width={560}
+        width={720}
       >
         <Form form={editForm} layout="vertical" onFinish={handleUpdate}>
-          <Form.Item name="name" label="Office Name" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-
-          <Form.Item name="address" label="Street Address">
-            <Input />
-          </Form.Item>
-
-          <Divider orientation="left" style={{ margin: '12px 0 16px', fontSize: 13 }}>
-            GPS Coordinates Selection
-          </Divider>
-
-          {/* Quick Helper Tools */}
-          <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 8, marginBottom: 16 }}>
-            <Text strong style={{ fontSize: 13, display: 'block', marginBottom: 6 }}>
-              Quick Location Tools:
-            </Text>
-            <Space wrap>
-              <Button
-                size="small"
-                icon={<CompassOutlined />}
-                loading={detectingLocation}
-                onClick={() => handleDetectLocation(editForm)}
-              >
-                Detect My Current GPS Location
-              </Button>
-            </Space>
-
-            <div style={{ marginTop: 8 }}>
-              <Input
-                size="small"
-                placeholder="Or paste 'Lat, Lon' (e.g. 37.7749, -122.4194)"
-                value={pasteCoordInput}
-                onChange={(e) => handleParseCoordinates(e.target.value, editForm)}
-                prefix={<AimOutlined style={{ color: '#8c8c8c' }} />}
-              />
-            </div>
-          </div>
-
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="latitude" label="Latitude" rules={[{ required: true }]}>
-                <InputNumber style={{ width: '100%' }} step={0.000001} precision={6} />
+              <Form.Item name="name" label="Office Name" rules={[{ required: true }]}>
+                <Input />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="longitude" label="Longitude" rules={[{ required: true }]}>
-                <InputNumber style={{ width: '100%' }} step={0.000001} precision={6} />
+              <Form.Item name="address" label="Street Address">
+                <Input />
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item
-            name="radius_meters"
-            label="Geofence Radius (Meters)"
-            rules={[{ required: true }]}
-          >
-            <InputNumber style={{ width: '100%' }} min={10} max={10000} />
-          </Form.Item>
+          <Divider orientation="left" style={{ margin: '8px 0 12px', fontSize: 13 }}>
+            Interactive Map Area Selector (OpenStreetMap)
+          </Divider>
+
+          {/* Interactive Map Picker */}
+          <MapPicker
+            latitude={editCoords.lat}
+            longitude={editCoords.lon}
+            radiusMeters={editCoords.radius}
+            onChange={(lat, lon) => {
+              setEditCoords((prev) => ({ ...prev, lat, lon }));
+              editForm.setFieldsValue({ latitude: lat, longitude: lon });
+            }}
+          />
+
+          <Row gutter={16} style={{ marginTop: 12 }}>
+            <Col span={8}>
+              <Form.Item name="latitude" label="Latitude" rules={[{ required: true }]}>
+                <InputNumber
+                  style={{ width: '100%' }}
+                  step={0.000001}
+                  precision={6}
+                  onChange={(val) => {
+                    if (typeof val === 'number') {
+                      setEditCoords((prev) => ({ ...prev, lat: val }));
+                    }
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="longitude" label="Longitude" rules={[{ required: true }]}>
+                <InputNumber
+                  style={{ width: '100%' }}
+                  step={0.000001}
+                  precision={6}
+                  onChange={(val) => {
+                    if (typeof val === 'number') {
+                      setEditCoords((prev) => ({ ...prev, lon: val }));
+                    }
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="radius_meters"
+                label="Geofence Radius (Meters)"
+                rules={[{ required: true }]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={10}
+                  max={10000}
+                  onChange={(val) => {
+                    if (typeof val === 'number') {
+                      setEditCoords((prev) => ({ ...prev, radius: val }));
+                    }
+                  }}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
 
           <Form.Item name="is_active" label="Active Location" valuePropName="checked">
             <Switch />
