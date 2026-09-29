@@ -17,11 +17,17 @@ import {
   Statistic,
   Popconfirm,
   Empty,
+  Drawer,
+  Progress,
 } from 'antd';
 import {
   PlusOutlined,
   CalendarOutlined,
   DeleteOutlined,
+  ClockCircleOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -48,6 +54,99 @@ const STATUS_COLOR: Record<string, string> = {
   CANCELLED: 'default',
 };
 
+const STATUS_ICON: Record<string, React.ReactNode> = {
+  PENDING: <ClockCircleOutlined />,
+  APPROVED: <CheckCircleOutlined />,
+  REJECTED: <CloseCircleOutlined />,
+  CANCELLED: <StopOutlined />,
+};
+
+/** Mobile leave request card — shown instead of the table on small screens */
+const LeaveCard: React.FC<{
+  r: LeaveRequest;
+  onCancel: (id: string) => void;
+  cancellingId: string | null;
+}> = ({ r, onCancel, cancellingId }) => (
+  <Card
+    size="small"
+    style={{ marginBottom: 10, borderRadius: 10 }}
+    styles={{ body: { padding: '12px 14px' } }}
+  >
+    {/* Top row: type + status */}
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+      <div>
+        <Text strong style={{ fontSize: 15 }}>{r.leave_type_name}</Text>
+        <br />
+        <Text type="secondary" style={{ fontSize: 12 }}>{r.leave_type_code}</Text>
+      </div>
+      <Tag
+        color={STATUS_COLOR[r.status]}
+        icon={STATUS_ICON[r.status]}
+        style={{ fontSize: 12, marginLeft: 8 }}
+      >
+        {r.status}
+      </Tag>
+    </div>
+
+    {/* Dates + days */}
+    <div style={{ display: 'flex', gap: 16, marginBottom: 8, flexWrap: 'wrap' }}>
+      <div>
+        <Text type="secondary" style={{ fontSize: 11 }}>FROM</Text>
+        <br />
+        <Text strong style={{ fontSize: 13 }}>{dayjs(r.start_date).format('DD MMM YYYY')}</Text>
+      </div>
+      <div>
+        <Text type="secondary" style={{ fontSize: 11 }}>TO</Text>
+        <br />
+        <Text strong style={{ fontSize: 13 }}>{dayjs(r.end_date).format('DD MMM YYYY')}</Text>
+      </div>
+      <div>
+        <Text type="secondary" style={{ fontSize: 11 }}>DAYS</Text>
+        <br />
+        <Tag color="blue" style={{ margin: 0 }}>{r.days_requested} day{r.days_requested !== 1 ? 's' : ''}</Tag>
+      </div>
+    </div>
+
+    {/* Reason / note */}
+    {r.reason && (
+      <div style={{ marginBottom: 6 }}>
+        <Text type="secondary" style={{ fontSize: 11 }}>REASON: </Text>
+        <Text style={{ fontSize: 13 }}>{r.reason}</Text>
+      </div>
+    )}
+    {r.reviewer_note && (
+      <div style={{ marginBottom: 6 }}>
+        <Text type="secondary" style={{ fontSize: 11 }}>REVIEWER NOTE: </Text>
+        <Text style={{ fontSize: 13 }}>{r.reviewer_note}</Text>
+      </div>
+    )}
+
+    {/* Footer: applied on + cancel */}
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+      <Text type="secondary" style={{ fontSize: 11 }}>
+        Applied {dayjs(r.created_at).format('DD MMM YYYY')}
+      </Text>
+      {r.status === 'PENDING' && (
+        <Popconfirm
+          title="Cancel this leave request?"
+          onConfirm={() => onCancel(r.id)}
+          okText="Yes, Cancel"
+          cancelText="No"
+        >
+          <Button
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            loading={cancellingId === r.id}
+          >
+            Cancel
+          </Button>
+        </Popconfirm>
+      )}
+    </div>
+  </Card>
+);
+
 export const LeavePage: React.FC = () => {
   const { hasPermission } = useAuth();
   const currentYear = dayjs().year();
@@ -59,12 +158,14 @@ export const LeavePage: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<string | undefined>();
   const [filterYear, setFilterYear] = useState<number>(currentYear);
 
-  // Apply modal
-  const [applyModalVisible, setApplyModalVisible] = useState(false);
+  // Apply modal (Drawer on mobile)
+  const [applyVisible, setApplyVisible] = useState(false);
   const [applyForm] = Form.useForm();
   const [applying, setApplying] = useState(false);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 700;
 
   const fetchAll = async () => {
     setLoading(true);
@@ -102,7 +203,7 @@ export const LeavePage: React.FC = () => {
         reason: values.reason || '',
       });
       message.success('Leave application submitted successfully');
-      setApplyModalVisible(false);
+      setApplyVisible(false);
       applyForm.resetFields();
       setDateRange(null);
       fetchAll();
@@ -126,6 +227,7 @@ export const LeavePage: React.FC = () => {
     }
   };
 
+  // Desktop table columns
   const columns: ColumnsType<LeaveRequest> = [
     {
       title: 'Leave Type',
@@ -157,19 +259,13 @@ export const LeavePage: React.FC = () => {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      render: (s: string) => <Tag color={STATUS_COLOR[s]}>{s}</Tag>,
+      render: (s: string) => <Tag color={STATUS_COLOR[s]} icon={STATUS_ICON[s]}>{s}</Tag>,
     },
     {
       title: 'Reason',
       dataIndex: 'reason',
       key: 'reason',
       render: (r: string | null) => r || <Text type="secondary">—</Text>,
-    },
-    {
-      title: 'Reviewer Note',
-      dataIndex: 'reviewer_note',
-      key: 'reviewer_note',
-      render: (n: string | null) => n || <Text type="secondary">—</Text>,
     },
     {
       title: 'Applied On',
@@ -203,98 +299,157 @@ export const LeavePage: React.FC = () => {
 
   const canApply = hasPermission(PermissionKey.LEAVE_APPLY);
 
-  return (
-    <div style={{ maxWidth: 1280, margin: '0 auto' }}>
-      {/* Balance Cards */}
-      <Card style={{ borderRadius: 12, marginBottom: 20 }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 20,
-            flexWrap: 'wrap',
-            gap: 16,
-          }}
-        >
-          <div>
-            <Title level={3} style={{ margin: 0 }}>
-              <CalendarOutlined style={{ marginRight: 8 }} />
-              My Leave
-            </Title>
-            <Text type="secondary">View your leave balances and manage your requests</Text>
-          </div>
-          {canApply && (
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setApplyModalVisible(true)}
-            >
-              Apply for Leave
-            </Button>
-          )}
-        </div>
+  // Shared Apply Form content (used in both Modal and Drawer)
+  const ApplyFormContent = (
+    <Form form={applyForm} layout="vertical" onFinish={handleApply}>
+      <Form.Item
+        name="leave_type_id"
+        label="Leave Type"
+        rules={[{ required: true, message: 'Please select a leave type' }]}
+      >
+        <Select placeholder="Select leave type" size="large">
+          {leaveTypes.filter((t) => t.is_active).map((t) => (
+            <Select.Option key={t.id} value={t.id}>
+              {t.name} ({t.annual_quota} days/year) {t.is_paid ? '• Paid' : '• Unpaid'}
+            </Select.Option>
+          ))}
+        </Select>
+      </Form.Item>
 
-        {balances.length === 0 ? (
+      <Form.Item label="Date Range" required>
+        <RangePicker
+          style={{ width: '100%' }}
+          size="large"
+          value={dateRange}
+          onChange={(val) => setDateRange(val as [Dayjs | null, Dayjs | null] | null)}
+          disabledDate={(d) => d && d < dayjs().startOf('day')}
+          format="DD MMM YYYY"
+        />
+      </Form.Item>
+
+      <Form.Item name="reason" label="Reason (optional)">
+        <TextArea rows={3} placeholder="Reason for your leave" />
+      </Form.Item>
+
+      <Button
+        type="primary"
+        htmlType="submit"
+        loading={applying}
+        block
+        size="large"
+        style={{ marginTop: 8 }}
+      >
+        Submit Application
+      </Button>
+    </Form>
+  );
+
+  return (
+    <div style={{ maxWidth: 900, margin: '0 auto' }}>
+      {/* ── Header + Apply Button ─────────────────── */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 14,
+          flexWrap: 'wrap',
+          gap: 10,
+        }}
+      >
+        <div>
+          <Title level={4} style={{ margin: 0 }}>
+            <CalendarOutlined style={{ marginRight: 8, color: '#1677ff' }} />
+            My Leave
+          </Title>
+          <Text type="secondary" style={{ fontSize: 13 }}>View your balances and manage requests</Text>
+        </div>
+        {canApply && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            size="large"
+            onClick={() => setApplyVisible(true)}
+            style={{ borderRadius: 8 }}
+          >
+            Apply for Leave
+          </Button>
+        )}
+      </div>
+
+      {/* ── Leave Balance Cards ────────────────────── */}
+      {balances.length === 0 ? (
+        <Card style={{ borderRadius: 12, marginBottom: 14 }}>
           <Empty description="No leave balances allocated for this year" />
-        ) : (
-          <Row gutter={[16, 16]}>
-            {balances.map((b) => (
-              <Col key={b.id} xs={24} sm={12} md={8} lg={6}>
+        </Card>
+      ) : (
+        <Row gutter={[12, 12]} style={{ marginBottom: 14 }}>
+          {balances.map((b) => {
+            const remaining = b.remaining_days ?? (b.allocated_days - b.used_days - b.pending_days);
+            const pct = b.allocated_days > 0 ? Math.round((remaining / b.allocated_days) * 100) : 0;
+            return (
+              <Col key={b.id} xs={24} sm={12} md={8}>
                 <Card
                   size="small"
-                  style={{ borderRadius: 8, background: '#fafafa' }}
-                  bordered
+                  style={{ borderRadius: 12, border: '1px solid #e8e8e8' }}
+                  styles={{ body: { padding: '14px 16px' } }}
                 >
-                  <div style={{ marginBottom: 8 }}>
-                    <Text strong>{b.leave_type_name}</Text>
-                    <br />
-                    <Text type="secondary" style={{ fontSize: 12 }}>{b.leave_type_code}</Text>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                    <div>
+                      <Text strong style={{ fontSize: 15 }}>{b.leave_type_name}</Text>
+                      <br />
+                      <Text type="secondary" style={{ fontSize: 11 }}>{b.leave_type_code}</Text>
+                    </div>
+                    <Tag color={remaining > 0 ? 'green' : 'red'} style={{ fontSize: 13, margin: 0 }}>
+                      {remaining} left
+                    </Tag>
                   </div>
-                  <Row gutter={8}>
-                    <Col span={12}>
-                      <Statistic
-                        title="Remaining"
-                        value={b.remaining_days ?? (b.allocated_days - b.used_days - b.pending_days)}
-                        suffix="days"
-                        valueStyle={{ color: '#52c41a', fontSize: 18 }}
-                      />
-                    </Col>
-                    <Col span={12}>
-                      <Statistic title="Allocated" value={b.allocated_days} suffix="days" valueStyle={{ fontSize: 18 }} />
-                    </Col>
-                  </Row>
-                  <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <Tag color="blue">Used: {b.used_days}</Tag>
-                    <Tag color="orange">Pending: {b.pending_days}</Tag>
+                  <Progress
+                    percent={pct}
+                    size="small"
+                    strokeColor={remaining > 2 ? '#52c41a' : '#ff4d4f'}
+                    showInfo={false}
+                    style={{ marginBottom: 8 }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>Total: <strong>{b.allocated_days} days</strong></Text>
+                    <Space size={4}>
+                      <Tag color="blue" style={{ margin: 0, fontSize: 11 }}>Used: {b.used_days}</Tag>
+                      {b.pending_days > 0 && (
+                        <Tag color="orange" style={{ margin: 0, fontSize: 11 }}>Pending: {b.pending_days}</Tag>
+                      )}
+                    </Space>
                   </div>
                 </Card>
               </Col>
-            ))}
-          </Row>
-        )}
-      </Card>
+            );
+          })}
+        </Row>
+      )}
 
-      {/* Leave History */}
-      <Card style={{ borderRadius: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
-          <Title level={4} style={{ margin: 0 }}>Leave History</Title>
-          <Space wrap>
+      {/* ── Leave History ─────────────────────────── */}
+      <Card style={{ borderRadius: 12 }} styles={{ body: { padding: '14px 16px' } }}>
+        {/* History header + filters */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+          <Title level={5} style={{ margin: 0 }}>Leave History</Title>
+          <Space size={8} wrap>
             <Select
               value={filterYear}
               onChange={setFilterYear}
-              style={{ width: 100 }}
+              style={{ width: 90 }}
+              size="small"
             >
               {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
                 <Select.Option key={y} value={y}>{y}</Select.Option>
               ))}
             </Select>
             <Select
-              placeholder="Filter by status"
+              placeholder="All status"
               allowClear
               value={filterStatus}
               onChange={setFilterStatus}
-              style={{ width: 160 }}
+              style={{ width: 130 }}
+              size="small"
             >
               {['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'].map((s) => (
                 <Select.Option key={s} value={s}>{s}</Select.Option>
@@ -303,66 +458,59 @@ export const LeavePage: React.FC = () => {
           </Space>
         </div>
 
-        <Table
-          dataSource={requests}
-          columns={columns}
-          rowKey="id"
-          loading={loading}
-          pagination={{ pageSize: 10 }}
-          locale={{ emptyText: <Empty description="No leave requests found" /> }}
-        />
+        {requests.length === 0 && !loading ? (
+          <Empty description="No leave requests found" style={{ padding: '24px 0' }} />
+        ) : (
+          <>
+            {/* Mobile: card list */}
+            <div className="leave-card-list">
+              {loading
+                ? <Empty description="Loading..." />
+                : requests.map((r) => (
+                    <LeaveCard key={r.id} r={r} onCancel={handleCancel} cancellingId={cancellingId} />
+                  ))}
+            </div>
+
+            {/* Desktop: table */}
+            <div className="leave-table-desktop">
+              <Table
+                dataSource={requests}
+                columns={columns}
+                rowKey="id"
+                loading={loading}
+                pagination={{ pageSize: 10 }}
+                locale={{ emptyText: <Empty description="No leave requests found" /> }}
+                size="small"
+              />
+            </div>
+          </>
+        )}
       </Card>
 
-      {/* Apply Modal */}
+      {/* ── Apply Leave — Drawer on mobile, Modal on desktop ─── */}
+      {/* Mobile Drawer */}
+      <Drawer
+        title="Apply for Leave"
+        placement="bottom"
+        height="auto"
+        open={applyVisible && isMobile}
+        onClose={() => { setApplyVisible(false); applyForm.resetFields(); setDateRange(null); }}
+        className="leave-apply-drawer"
+        styles={{ body: { paddingBottom: 'env(safe-area-inset-bottom, 16px)' } }}
+      >
+        {ApplyFormContent}
+      </Drawer>
+
+      {/* Desktop Modal */}
       <Modal
         title="Apply for Leave"
-        open={applyModalVisible}
-        onCancel={() => {
-          setApplyModalVisible(false);
-          applyForm.resetFields();
-          setDateRange(null);
-        }}
+        open={applyVisible && !isMobile}
+        onCancel={() => { setApplyVisible(false); applyForm.resetFields(); setDateRange(null); }}
         footer={null}
         destroyOnClose
+        width={480}
       >
-        <Form form={applyForm} layout="vertical" onFinish={handleApply}>
-          <Form.Item
-            name="leave_type_id"
-            label="Leave Type"
-            rules={[{ required: true, message: 'Please select a leave type' }]}
-          >
-            <Select placeholder="Select leave type">
-              {leaveTypes.filter((t) => t.is_active).map((t) => (
-                <Select.Option key={t.id} value={t.id}>
-                  {t.name} ({t.annual_quota} days/year) {t.is_paid ? '• Paid' : '• Unpaid'}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-
-          <Form.Item label="Date Range" required>
-            <RangePicker
-              style={{ width: '100%' }}
-              value={dateRange}
-              onChange={(val) => setDateRange(val as [Dayjs | null, Dayjs | null] | null)}
-              disabledDate={(d) => d && d < dayjs().startOf('day')}
-              format="DD MMM YYYY"
-            />
-          </Form.Item>
-
-          <Form.Item name="reason" label="Reason">
-            <TextArea rows={3} placeholder="Optional reason for leave" />
-          </Form.Item>
-
-          <div style={{ textAlign: 'right', marginTop: 16 }}>
-            <Space>
-              <Button onClick={() => setApplyModalVisible(false)}>Cancel</Button>
-              <Button type="primary" htmlType="submit" loading={applying}>
-                Submit Application
-              </Button>
-            </Space>
-          </div>
-        </Form>
+        {ApplyFormContent}
       </Modal>
     </div>
   );

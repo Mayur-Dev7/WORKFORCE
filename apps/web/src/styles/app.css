@@ -258,3 +258,21 @@ html, body {
     padding: 32px 20px !important;
   }
 }
+
+/* ─── Leave Page — card list vs table toggle ────── */
+.leave-card-list  { display: block; }
+.leave-table-desktop { display: none; }
+
+@media (min-width: 700px) {
+  .leave-card-list     { display: none; }
+  .leave-table-desktop { display: block; }
+}
+
+.leave-apply-drawer .ant-drawer-content-wrapper {
+  border-radius: 20px 20px 0 0;
+  overflow: hidden;
+}
+.leave-apply-drawer .ant-drawer-body {
+  max-height: 90vh;
+  overflow-y: auto;
+}
