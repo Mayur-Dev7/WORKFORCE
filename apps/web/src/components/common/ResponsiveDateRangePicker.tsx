@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { DatePicker, Modal, Button, Typography, Tag, Space } from 'antd';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { DatePicker, Modal, Button, Typography, Tag } from 'antd';
 import {
   CalendarOutlined,
   SwapRightOutlined,
@@ -29,6 +29,27 @@ export interface ResponsiveDateRangePickerProps {
 
 const WEEKDAY_NAMES = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
+/** True on touch-first devices (phones/tablets), even if the viewport is wider than 768px. */
+const useIsCoarsePointer = (): boolean => {
+  const query = '(pointer: coarse)';
+  const [coarse, setCoarse] = useState<boolean>(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia(query).matches
+      : false
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mql = window.matchMedia(query);
+    const handler = (e: MediaQueryListEvent) => setCoarse(e.matches);
+    setCoarse(mql.matches);
+    mql.addEventListener?.('change', handler);
+    return () => mql.removeEventListener?.('change', handler);
+  }, []);
+
+  return coarse;
+};
+
 export const ResponsiveDateRangePicker: React.FC<ResponsiveDateRangePickerProps> = ({
   value,
   onChange,
@@ -40,10 +61,12 @@ export const ResponsiveDateRangePicker: React.FC<ResponsiveDateRangePickerProps>
   className,
   allowClear = true,
 }) => {
-  const isMobile = useIsMobile(768);
+  const isMobileWidth = useIsMobile(768);
+  const isCoarsePointer = useIsCoarsePointer();
+  const useModalPicker = isMobileWidth || isCoarsePointer;
 
   // Desktop branch: standard Ant Design RangePicker
-  if (!isMobile) {
+  if (!useModalPicker) {
     return (
       <RangePicker
         value={value}
@@ -55,11 +78,12 @@ export const ResponsiveDateRangePicker: React.FC<ResponsiveDateRangePickerProps>
         style={{ width: '100%', ...style }}
         className={className}
         allowClear={allowClear}
+        inputReadOnly
       />
     );
   }
 
-  // Mobile branch: Read-only button trigger + Dedicated Touch-Optimized Calendar Modal
+  // Mobile / touch branch: read-only button trigger + calendar-only modal
   return (
     <MobileDateRangePickerInner
       value={value}
@@ -94,6 +118,20 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
     return value?.[0] ? value[0].startOf('month') : dayjs().startOf('month');
   });
 
+  // Dismiss the software keyboard: blur whatever currently has focus
+  // (Reason textarea, Select search input, etc.) BEFORE the modal opens.
+  const blurActiveElement = useCallback(() => {
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && activeElement !== document.body) {
+      activeElement.blur();
+    }
+  }, []);
+
+  const openDateRangePicker = useCallback(() => {
+    blurActiveElement();
+    setModalOpen(true);
+  }, [blurActiveElement]);
+
   // Sync internal modal state whenever the modal opens or value changes
   useEffect(() => {
     if (modalOpen) {
@@ -106,10 +144,25 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
     }
   }, [modalOpen, value]);
 
+  // Safety net: if anything grabbed focus while the modal was opening, release it again.
+  useEffect(() => {
+    if (modalOpen) {
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        active instanceof HTMLSelectElement
+      ) {
+        active.blur();
+      }
+    }
+  }, [modalOpen]);
+
   const hasValue = Boolean(value?.[0] && value?.[1]);
 
-  const handleClear = (e: React.MouseEvent) => {
+  const handleClear = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
+    e.preventDefault();
     onChange?.(null);
   };
 
@@ -130,31 +183,24 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
 
     if (activeStep === 'start') {
       setTempStart(date);
-      // If an existing end date is before the newly selected start date, clear it
       if (tempEnd && date.isAfter(tempEnd, 'day')) {
         setTempEnd(null);
       }
       setActiveStep('end');
-    } else {
-      // activeStep === 'end'
-      if (!tempStart) {
-        setTempStart(date);
-        setActiveStep('end');
-      } else if (date.isBefore(tempStart, 'day')) {
-        // Tapped earlier than start date: set this as new start date, stay in 'end' mode
-        setTempStart(date);
-        setTempEnd(null);
-        setActiveStep('end');
-      } else if (tempStart && tempEnd && !date.isSame(tempEnd, 'day')) {
-        // Both already picked and user clicked a new date: start fresh selection
-        setTempStart(date);
-        setTempEnd(null);
-        setActiveStep('end');
-      } else {
-        // Normal end date selection (>= tempStart)
-        setTempEnd(date);
-      }
+      return;
     }
+
+    // activeStep === 'end'
+    if (!tempStart || date.isBefore(tempStart, 'day')) {
+      // Earlier than start: restart from this date
+      setTempStart(date);
+      setTempEnd(null);
+      setActiveStep('end');
+      return;
+    }
+
+    // On or after start: always update the End Date only
+    setTempEnd(date);
   };
 
   // Build grid calendar days
@@ -225,27 +271,27 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
   const minHeight = size === 'large' ? 44 : size === 'small' ? 32 : 38;
   const padding = size === 'large' ? '8px 12px' : size === 'small' ? '4px 8px' : '6px 11px';
 
+  const stepCardStyle = (active: boolean): React.CSSProperties => ({
+    flex: 1,
+    padding: '8px 10px',
+    borderRadius: 10,
+    border: `2px solid ${active ? '#1677ff' : '#e5e7eb'}`,
+    background: active ? '#eff6ff' : '#fafafa',
+    cursor: 'pointer',
+    textAlign: 'center',
+    transition: 'all 0.2s',
+    font: 'inherit',
+    touchAction: 'manipulation',
+    WebkitTapHighlightColor: 'transparent',
+  });
+
   return (
     <>
-      {/* ── Mobile Non-Editable / Selection-Only Trigger ── */}
-      {/* This is a read-only button trigger with NO input tag, so Android keyboard NEVER opens */}
+      {/* ── Selection-only trigger: NO <input>, so it can never invoke the keyboard ── */}
       <div
-        role="button"
-        tabIndex={0}
-        aria-haspopup="dialog"
-        aria-label={
-          hasValue
-            ? `Date Range: ${value![0]!.format(format)} to ${value![1]!.format(format)}`
-            : 'Date Range: Select start date and end date'
-        }
-        onClick={() => setModalOpen(true)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            setModalOpen(true);
-          }
-        }}
-        className={`ant-picker ${size === 'large' ? 'ant-picker-large' : size === 'small' ? 'ant-picker-small' : ''} ${className || ''}`}
+        className={`ant-picker ${
+          size === 'large' ? 'ant-picker-large' : size === 'small' ? 'ant-picker-small' : ''
+        } ${className || ''}`}
         style={{
           width: '100%',
           display: 'flex',
@@ -256,15 +302,41 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
           borderRadius: 8,
           border: '1px solid #d9d9d9',
           background: '#ffffff',
-          cursor: 'pointer',
-          userSelect: 'none',
-          WebkitTapHighlightColor: 'transparent',
           boxSizing: 'border-box',
           transition: 'all 0.2s cubic-bezier(0.645, 0.045, 0.355, 1)',
           ...style,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, overflow: 'hidden' }}>
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          aria-label={
+            hasValue
+              ? `Date Range: ${value![0]!.format(format)} to ${value![1]!.format(format)}`
+              : 'Date Range: Select start date and end date'
+          }
+          // Keep the tap from moving focus onto the trigger / an input
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={openDateRangePicker}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: 0,
+            margin: 0,
+            border: 'none',
+            background: 'transparent',
+            font: 'inherit',
+            textAlign: 'left',
+            cursor: 'pointer',
+            userSelect: 'none',
+            overflow: 'hidden',
+            touchAction: 'manipulation',
+            WebkitTapHighlightColor: 'transparent',
+          }}
+        >
           <span
             style={{
               color: value?.[0] ? '#1f2937' : '#9ca3af',
@@ -292,21 +364,15 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
           >
             {value?.[1] ? value[1].format(format) : placeholder[1]}
           </span>
-        </div>
+        </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, marginLeft: 8 }}>
           {allowClear && hasValue && (
-            <span
-              role="button"
-              tabIndex={0}
+            <button
+              type="button"
               aria-label="Clear dates"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={handleClear}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.stopPropagation();
-                  handleClear(e as any);
-                }
-              }}
               style={{
                 color: '#bfbfbf',
                 fontSize: 14,
@@ -314,21 +380,25 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 padding: '2px 4px',
+                border: 'none',
+                background: 'transparent',
+                touchAction: 'manipulation',
               }}
             >
               <CloseCircleFilled />
-            </span>
+            </button>
           )}
           <CalendarOutlined style={{ color: '#8c8c8c', fontSize: 16 }} />
         </div>
       </div>
 
-      {/* ── Mobile Calendar Modal (Touch-First & Keyboard-Free) ── */}
+      {/* ── Calendar-only modal ── */}
       <Modal
         open={modalOpen}
         onCancel={handleCancel}
         footer={null}
         destroyOnClose
+        focusTriggerAfterClose={false}
         centered
         zIndex={1100}
         title={
@@ -348,21 +418,11 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
       >
         {/* Step / Range Indicators */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-          {/* Start Date Card */}
-          <div
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
             onClick={() => setActiveStep('start')}
-            style={{
-              flex: 1,
-              padding: '8px 10px',
-              borderRadius: 10,
-              border: `2px solid ${activeStep === 'start' ? '#1677ff' : '#e5e7eb'}`,
-              background: activeStep === 'start' ? '#eff6ff' : '#fafafa',
-              cursor: 'pointer',
-              textAlign: 'center',
-              transition: 'all 0.2s',
-            }}
+            aria-pressed={activeStep === 'start'}
+            style={stepCardStyle(activeStep === 'start')}
           >
             <div
               style={{
@@ -388,25 +448,15 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
             >
               {tempStart ? tempStart.format('DD MMM YYYY') : 'Not selected'}
             </div>
-          </div>
+          </button>
 
           <SwapRightOutlined style={{ color: '#9ca3af', fontSize: 16, flexShrink: 0 }} />
 
-          {/* End Date Card */}
-          <div
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
             onClick={() => setActiveStep('end')}
-            style={{
-              flex: 1,
-              padding: '8px 10px',
-              borderRadius: 10,
-              border: `2px solid ${activeStep === 'end' ? '#1677ff' : '#e5e7eb'}`,
-              background: activeStep === 'end' ? '#eff6ff' : '#fafafa',
-              cursor: 'pointer',
-              textAlign: 'center',
-              transition: 'all 0.2s',
-            }}
+            aria-pressed={activeStep === 'end'}
+            style={stepCardStyle(activeStep === 'end')}
           >
             <div
               style={{
@@ -432,7 +482,7 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
             >
               {tempEnd ? tempEnd.format('DD MMM YYYY') : 'Not selected'}
             </div>
-          </div>
+          </button>
         </div>
 
         {/* Dynamic Instructional Banner */}
@@ -478,19 +528,17 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
           <div style={{ display: 'flex', gap: 2 }}>
             <Button
               type="text"
-              size="small"
               icon={<DoubleLeftOutlined />}
               onClick={() => setViewMonth(viewMonth.subtract(1, 'year'))}
               aria-label="Previous year"
-              style={{ minHeight: 32, width: 32 }}
+              style={{ minHeight: 40, width: 40 }}
             />
             <Button
               type="text"
-              size="small"
               icon={<LeftOutlined />}
               onClick={() => setViewMonth(viewMonth.subtract(1, 'month'))}
               aria-label="Previous month"
-              style={{ minHeight: 32, width: 32 }}
+              style={{ minHeight: 40, width: 40 }}
             />
           </div>
 
@@ -501,19 +549,17 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
           <div style={{ display: 'flex', gap: 2 }}>
             <Button
               type="text"
-              size="small"
               icon={<RightOutlined />}
               onClick={() => setViewMonth(viewMonth.add(1, 'month'))}
               aria-label="Next month"
-              style={{ minHeight: 32, width: 32 }}
+              style={{ minHeight: 40, width: 40 }}
             />
             <Button
               type="text"
-              size="small"
               icon={<DoubleRightOutlined />}
               onClick={() => setViewMonth(viewMonth.add(1, 'year'))}
               aria-label="Next year"
-              style={{ minHeight: 32, width: 32 }}
+              style={{ minHeight: 40, width: 40 }}
             />
           </div>
         </div>
@@ -539,20 +585,19 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(7, 1fr)',
-            rowGap: 4,
+            rowGap: 2,
             padding: '2px 0 8px',
           }}
         >
           {daysGrid.map((cell, idx) => {
             if (!cell.date) {
-              return <div key={`blank-${idx}`} style={{ height: 40 }} />;
+              return <div key={`blank-${idx}`} style={{ height: 44 }} />;
             }
 
             const { date, dayNum, disabled, isToday, isStart, isEnd, isInRange, isSingleDay } = cell;
 
             // Range background connection styling
             let cellBg = 'transparent';
-            let borderRadius = '0';
 
             if (isInRange) {
               cellBg = '#e6f4ff';
@@ -566,12 +611,11 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
               <div
                 key={date.format('YYYY-MM-DD')}
                 style={{
-                  height: 40,
+                  height: 44,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   background: cellBg,
-                  borderRadius,
                   position: 'relative',
                 }}
               >
@@ -579,22 +623,26 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
                   type="button"
                   disabled={disabled}
                   onClick={() => handleDaySelect(date)}
-                  aria-label={`${date.format('dddd, DD MMMM YYYY')}${isStart ? ' (Start Date)' : ''}${isEnd ? ' (End Date)' : ''}`}
+                  aria-pressed={isStart || isEnd}
+                  aria-label={`${date.format('dddd, DD MMMM YYYY')}${isStart ? ' (Start Date)' : ''}${
+                    isEnd ? ' (End Date)' : ''
+                  }`}
                   style={{
-                    width: 36,
-                    height: 36,
+                    width: 40,
+                    height: 40,
                     borderRadius: '50%',
                     border: isToday && !isStart && !isEnd ? '1px solid #1677ff' : 'none',
                     background: isStart || isEnd ? '#1677ff' : 'transparent',
                     color: isStart || isEnd ? '#ffffff' : disabled ? '#d1d5db' : isToday ? '#1677ff' : '#1f2937',
                     fontWeight: isStart || isEnd || isToday ? 600 : 400,
-                    fontSize: 13,
+                    fontSize: 14,
                     cursor: disabled ? 'not-allowed' : 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     padding: 0,
                     outline: 'none',
+                    touchAction: 'manipulation',
                     WebkitTapHighlightColor: 'transparent',
                     boxShadow: isStart || isEnd ? '0 2px 6px rgba(22, 119, 255, 0.35)' : 'none',
                     transition: 'all 0.15s ease-in-out',
@@ -633,7 +681,6 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
               borderRadius: 8,
               fontSize: 14,
               fontWeight: 600,
-              background: tempStart && tempEnd ? '#1677ff' : undefined,
             }}
           >
             {tempStart && tempEnd ? `Apply (${selectedDurationDays}d)` : 'Apply / Done'}

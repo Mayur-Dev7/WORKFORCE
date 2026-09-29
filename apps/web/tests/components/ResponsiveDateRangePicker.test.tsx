@@ -113,4 +113,95 @@ describe('ResponsiveDateRangePicker Component', () => {
     fireEvent.click(applyBtn);
     expect(handleChange).toHaveBeenCalledWith([testDateStart, testDateEnd]);
   });
+
+  it('adjusts end date when End Date card is active and a date after start is tapped', () => {
+    window.innerWidth = 400;
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+
+    const handleChange = vi.fn();
+    // Using current month: 15th to 17th
+    const currentMonth = dayjs().startOf('month');
+    const d15 = currentMonth.date(15);
+    const d17 = currentMonth.date(17);
+    const d18 = currentMonth.date(18);
+
+    render(
+      <ResponsiveDateRangePicker
+        value={[d15, d17]}
+        onChange={handleChange}
+      />
+    );
+
+    const trigger = screen.getByRole('button', { name: /Date Range/i });
+    fireEvent.click(trigger);
+
+    // Make End Date card active as stated in the scenario
+    const endCard = screen.getByText('End Date');
+    fireEvent.click(endCard);
+
+    // Tapping 18 when End card is active should adjust End to 18 (Start remains 15)
+    const day18Btn = screen.getByRole('button', { name: new RegExp(d18.format('DD MMMM YYYY'), 'i') });
+    fireEvent.click(day18Btn);
+
+    // Should now show 4 days (15th to 18th)
+    const applyBtn = screen.getByRole('button', { name: /Apply \(4d\)/i });
+    expect(applyBtn).not.toBeDisabled();
+    fireEvent.click(applyBtn);
+
+    expect(handleChange).toHaveBeenCalledWith([d15, d18]);
+  });
+
+  it('adjusts start date when Start Date card is clicked and an earlier date is tapped', () => {
+    window.innerWidth = 400;
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+
+    const handleChange = vi.fn();
+    const currentMonth = dayjs().startOf('month');
+    const d15 = currentMonth.date(15);
+    const d17 = currentMonth.date(17);
+    const d14 = currentMonth.date(14);
+
+    render(
+      <ResponsiveDateRangePicker
+        value={[d15, d17]}
+        onChange={handleChange}
+      />
+    );
+
+    const trigger = screen.getByRole('button', { name: /Date Range/i });
+    fireEvent.click(trigger);
+
+    // Click Start Date card
+    const startCard = screen.getByText('Start Date');
+    fireEvent.click(startCard);
+
+    // Tap 14
+    const day14Btn = screen.getByRole('button', { name: new RegExp(d14.format('DD MMMM YYYY'), 'i') });
+    fireEvent.click(day14Btn);
+
+    // Start becomes 14, End remains 17 (4 days: 14 to 17)
+    const applyBtn = screen.getByRole('button', { name: /Apply \(4d\)/i });
+    expect(applyBtn).not.toBeDisabled();
+    fireEvent.click(applyBtn);
+
+    expect(handleChange).toHaveBeenCalledWith([d14, d17]);
+  });
 });
