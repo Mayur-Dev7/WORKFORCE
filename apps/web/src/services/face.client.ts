@@ -6,7 +6,7 @@ let isInitialized = false;
 const humanConfig: Partial<Config> = {
   backend: 'webgl',
   cacheSensitivity: 0.7,
-  modelBasePath: 'https://vladmandic.github.io/human-models/models/',
+  modelBasePath: '/models/',
   filter: { enabled: true, equalization: false, flip: true },
   face: {
     enabled: true,
@@ -24,6 +24,35 @@ const humanConfig: Partial<Config> = {
   gesture: { enabled: true },
 };
 
+/**
+ * Calculates cosine similarity between two vector embeddings.
+ * Range: -1.0 to 1.0 (with 1.0 being exact identity match).
+ */
+export function cosineSimilarity(embeddingA: number[], embeddingB: number[]): number {
+  if (!embeddingA || !embeddingB || embeddingA.length === 0 || embeddingB.length === 0) {
+    return 0;
+  }
+  if (embeddingA.length !== embeddingB.length) {
+    return 0;
+  }
+
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (let i = 0; i < embeddingA.length; i++) {
+    dotProduct += embeddingA[i] * embeddingB[i];
+    normA += embeddingA[i] * embeddingA[i];
+    normB += embeddingB[i] * embeddingB[i];
+  }
+
+  if (normA === 0 || normB === 0) {
+    return 0;
+  }
+
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
 export async function getHuman(): Promise<Human> {
   if (!humanInstance) {
     humanInstance = new Human(humanConfig);
@@ -34,7 +63,14 @@ export async function getHuman(): Promise<Human> {
       await humanInstance.warmup();
       isInitialized = true;
     } catch (e) {
-      console.warn('Human library warmup warning (fallback active):', e);
+      console.warn('Local model load fallback to CDN:', e);
+      try {
+        humanInstance = new Human({ ...humanConfig, modelBasePath: 'https://vladmandic.github.io/human-models/models/' });
+        await humanInstance.load();
+        await humanInstance.warmup();
+      } catch (cdnErr) {
+        console.warn('Human library warmup warning (fallback active):', cdnErr);
+      }
       isInitialized = true;
     }
   }

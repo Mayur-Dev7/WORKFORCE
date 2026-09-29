@@ -16,7 +16,7 @@ import {
 } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext.js';
 import { api } from '../../services/api.js';
-import { analyzeVideoFrame } from '../../services/face.client.js';
+import { analyzeVideoFrame, cosineSimilarity } from '../../services/face.client.js';
 import { Office, ApiResponse, AttendanceSession } from '@workforce/shared';
 
 const { Title, Text } = Typography;
@@ -36,10 +36,13 @@ export const CheckOutPage: React.FC = () => {
   const [cameraReady, setCameraReady] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
   const [qualityScore, setQualityScore] = useState(0);
+  const [faceMatched, setFaceMatched] = useState(false);
+  const [faceSimilarity, setFaceSimilarity] = useState(0);
   const [livenessPassed, setLivenessPassed] = useState(false);
   const [livenessScore, setLivenessScore] = useState(0);
   const [lastEmbedding, setLastEmbedding] = useState<number[]>([]);
 
+  const [referenceEmbedding, setReferenceEmbedding] = useState<number[] | null>(null);
   const [userCoords, setUserCoords] = useState<{ lat: number; lon: number; accuracy: number } | null>(null);
   const [office, setOffice] = useState<Office | null>(null);
   const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
@@ -60,6 +63,17 @@ export const CheckOutPage: React.FC = () => {
         } catch (e) {
           console.error(e);
         }
+      }
+
+      try {
+        const faceRes = await api.get('/users/self/face-template');
+        if (active && faceRes.data?.data) {
+          if (faceRes.data.data.embedding && Array.isArray(faceRes.data.data.embedding)) {
+            setReferenceEmbedding(faceRes.data.data.embedding);
+          }
+        }
+      } catch (e) {
+        console.warn('Could not fetch reference template', e);
       }
 
       try {
@@ -135,7 +149,7 @@ export const CheckOutPage: React.FC = () => {
     const processFrame = async () => {
       if (videoRef.current && videoRef.current.readyState === 4 && cameraReady) {
         frameCount++;
-        if (frameCount % 10 === 0) {
+        if (frameCount % 6 === 0) {
           const detection = await analyzeVideoFrame(videoRef.current);
           if (detection.faceCount === 1) {
             setFaceDetected(true);
@@ -143,15 +157,39 @@ export const CheckOutPage: React.FC = () => {
             setLivenessScore(detection.livenessScore);
             setLastEmbedding(detection.embedding);
 
-            if (detection.livenessScore >= 0.6) {
-              setLivenessPassed(true);
-              setLivenessInstruction('Face ready for check-out ✓');
+            let isMatch = false;
+            let sim = 0;
+            if (referenceEmbedding && referenceEmbedding.length > 0 && detection.embedding.length > 0) {
+              sim = cosineSimilarity(detection.embedding, referenceEmbedding);
+              setFaceSimilarity(sim);
+              isMatch = sim >= 0.65;
+              setFaceMatched(isMatch);
             } else {
-              setLivenessInstruction('Blink or turn slightly');
+              setFaceSimilarity(0);
+              setFaceMatched(false);
             }
+
+            const livenessOk = detection.livenessScore >= 0.5;
+            setLivenessPassed(livenessOk);
+
+            if (!referenceEmbedding) {
+              setLivenessInstruction('No reference face template enrolled');
+            } else if (!isMatch) {
+              const pct = Math.max(0, Math.round(sim * 100));
+              setLivenessInstruction(`Face mismatch (${pct}% match) — does not match ${user?.name}`);
+            } else if (!livenessOk) {
+              setLivenessInstruction(`Identity matched (${Math.round(sim * 100)}%) — please blink or nod`);
+            } else {
+              setLivenessInstruction(`Identity & Liveness Verified (${Math.round(sim * 100)}% match) ✓`);
+            }
+          } else if (detection.faceCount > 1) {
+            setFaceDetected(false);
+            setFaceMatched(false);
+            setLivenessInstruction('Multiple faces detected - only 1 person allowed');
           } else {
             setFaceDetected(false);
-            setLivenessInstruction('Look directly at camera');
+            setFaceMatched(false);
+            setLivenessInstruction('Position face in oval guide');
           }
         }
       }
@@ -160,7 +198,7 @@ export const CheckOutPage: React.FC = () => {
 
     animId = requestAnimationFrame(processFrame);
     return () => cancelAnimationFrame(animId);
-  }, [cameraReady]);
+  }, [cameraReady, referenceEmbedding, user?.name]);
 
   const handlePerformCheckOut = async () => {
     if (!userCoords) {
@@ -170,6 +208,11 @@ export const CheckOutPage: React.FC = () => {
 
     if (!faceDetected || lastEmbedding.length === 0) {
       message.error('Face not detected. Please look directly at camera.');
+      return;
+    }
+
+    if (!faceMatched) {
+      message.error(`Face does not match registered employee (${Math.max(0, Math.round(faceSimilarity * 100))}% match - requires ≥ 65%)`);
       return;
     }
 
@@ -203,7 +246,12 @@ export const CheckOutPage: React.FC = () => {
     }
   };
 
-  const isReadyToSubmit = faceDetected && livenessPassed && insideGeofence === true && !submitting;
+  const isReadyToSubmit =
+    faceDetected &&
+    faceMatched &&
+    livenessPassed &&
+    insideGeofence === true &&
+    !submitting;
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
@@ -233,7 +281,7 @@ export const CheckOutPage: React.FC = () => {
               <video ref={videoRef} playsInline muted className="camera-video" />
               <div
                 className={`face-guide-overlay ${
-                  faceDetected ? (livenessPassed ? 'detected' : 'warning') : ''
+                  faceDetected ? (faceMatched && livenessPassed ? 'detected' : 'warning') : ''
                 }`}
               />
               <div className="camera-status-badge">
@@ -270,10 +318,39 @@ export const CheckOutPage: React.FC = () => {
                     <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18 }} />
                   )}
                   <div>
-                    <Text strong>Face Verification</Text>
+                    <Text strong>Live Camera Face Detection</Text>
                     <br />
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      {faceDetected ? `Quality: ${(qualityScore * 100).toFixed(0)}%` : 'No face in oval guide'}
+                      {faceDetected
+                        ? `Face in view (Clarity: ${(qualityScore * 100).toFixed(0)}%)`
+                        : 'No face in camera view'}
+                    </Text>
+                  </div>
+                </div>
+
+                <div className="status-step-item">
+                  {faceMatched ? (
+                    <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
+                  ) : (
+                    <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18 }} />
+                  )}
+                  <div>
+                    <Text strong>Biometric Identity Match (1:1)</Text>
+                    <br />
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: faceMatched ? '#52c41a' : '#cf1322',
+                        fontWeight: '500',
+                      }}
+                    >
+                      {!user?.face_enrolled
+                        ? 'Reference photo required'
+                        : !faceDetected
+                        ? 'Position face to verify'
+                        : faceMatched
+                        ? `Identity Verified: ${(faceSimilarity * 100).toFixed(0)}% match with ${user?.name} ✓`
+                        : `Face Mismatch: ${Math.max(0, Math.round(faceSimilarity * 100))}% match (Requires ≥ 65%)`}
                     </Text>
                   </div>
                 </div>
@@ -288,7 +365,7 @@ export const CheckOutPage: React.FC = () => {
                     <Text strong>Liveness Anti-Spoof</Text>
                     <br />
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      {livenessPassed ? `Score: ${(livenessScore * 100).toFixed(0)}%` : 'Awaiting motion'}
+                      {livenessPassed ? `Score: ${(livenessScore * 100).toFixed(0)}% ✓` : 'Awaiting motion/blink'}
                     </Text>
                   </div>
                 </div>
@@ -303,7 +380,7 @@ export const CheckOutPage: React.FC = () => {
                     <Text strong>GPS Accuracy</Text>
                     <br />
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      {userCoords ? `+/- ${Math.round(userCoords.accuracy)}m` : 'Locating...'}
+                      {userCoords ? `+/- ${Math.round(userCoords.accuracy)}m (Max 100m)` : 'Acquiring GPS fix...'}
                     </Text>
                   </div>
                 </div>
@@ -319,8 +396,8 @@ export const CheckOutPage: React.FC = () => {
                     <br />
                     <Text type="secondary" style={{ fontSize: 12 }}>
                       {distanceMeters !== null && office
-                        ? `${distanceMeters}m / max ${office.radius_meters}m`
-                        : 'Calculating...'}
+                        ? `${distanceMeters}m from office (Max: ${office.radius_meters}m)`
+                        : 'Calculating distance...'}
                     </Text>
                   </div>
                 </div>
@@ -336,10 +413,20 @@ export const CheckOutPage: React.FC = () => {
                 icon={<SafetyCertificateOutlined />}
                 disabled={!isReadyToSubmit}
                 loading={submitting}
-                style={{ height: 50, fontSize: 16, borderRadius: 8 }}
+                style={{ height: 50, fontSize: 15, borderRadius: 8 }}
                 onClick={handlePerformCheckOut}
               >
-                CONFIRM CHECK-OUT
+                {insideGeofence === false
+                  ? 'OUTSIDE GEOFENCE'
+                  : !user?.face_enrolled
+                  ? 'ENROLL FACE FIRST'
+                  : !faceDetected
+                  ? 'POSITION FACE IN OVAL'
+                  : !faceMatched
+                  ? 'FACE MISMATCH — CANNOT CHECK OUT'
+                  : !livenessPassed
+                  ? 'AWAITING LIVENESS CHECK'
+                  : 'CONFIRM CHECK-OUT'}
               </Button>
             </Card>
           </div>

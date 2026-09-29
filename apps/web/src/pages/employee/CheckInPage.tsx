@@ -23,7 +23,7 @@ import {
 } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext.js';
 import { api } from '../../services/api.js';
-import { analyzeVideoFrame } from '../../services/face.client.js';
+import { analyzeVideoFrame, cosineSimilarity } from '../../services/face.client.js';
 import { Office, ApiResponse, AttendanceSession } from '@workforce/shared';
 
 const { Title, Text, Paragraph } = Typography;
@@ -43,6 +43,8 @@ export const CheckInPage: React.FC = () => {
   const [cameraReady, setCameraReady] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
   const [qualityScore, setQualityScore] = useState(0);
+  const [faceMatched, setFaceMatched] = useState(false);
+  const [faceSimilarity, setFaceSimilarity] = useState(0);
   const [livenessPassed, setLivenessPassed] = useState(false);
   const [livenessScore, setLivenessScore] = useState(0);
   const [lastEmbedding, setLastEmbedding] = useState<number[]>([]);
@@ -55,6 +57,7 @@ export const CheckInPage: React.FC = () => {
 
   // Reference face template
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
+  const [referenceEmbedding, setReferenceEmbedding] = useState<number[] | null>(null);
 
   // Request & Submission state
   const [submitting, setSubmitting] = useState(false);
@@ -78,8 +81,13 @@ export const CheckInPage: React.FC = () => {
 
       try {
         const faceRes = await api.get('/users/self/face-template');
-        if (active && faceRes.data?.data?.referenceImage) {
-          setReferenceImage(faceRes.data.data.referenceImage);
+        if (active && faceRes.data?.data) {
+          if (faceRes.data.data.referenceImage) {
+            setReferenceImage(faceRes.data.data.referenceImage);
+          }
+          if (faceRes.data.data.embedding && Array.isArray(faceRes.data.data.embedding)) {
+            setReferenceEmbedding(faceRes.data.data.embedding);
+          }
         }
       } catch (e) {
         console.warn('Could not fetch reference face', e);
@@ -164,7 +172,7 @@ export const CheckInPage: React.FC = () => {
     const processFrame = async () => {
       if (videoRef.current && videoRef.current.readyState === 4 && cameraReady) {
         frameCount++;
-        if (frameCount % 10 === 0) {
+        if (frameCount % 6 === 0) {
           const detection = await analyzeVideoFrame(videoRef.current);
           if (detection.faceCount === 1) {
             setFaceDetected(true);
@@ -172,17 +180,39 @@ export const CheckInPage: React.FC = () => {
             setLivenessScore(detection.livenessScore);
             setLastEmbedding(detection.embedding);
 
-            if (detection.livenessScore >= 0.6) {
-              setLivenessPassed(true);
-              setLivenessInstruction('Face and liveness verified ✓');
+            // Real-time 1:1 Biometric Comparison against enrolled reference
+            let isMatch = false;
+            let sim = 0;
+            if (referenceEmbedding && referenceEmbedding.length > 0 && detection.embedding.length > 0) {
+              sim = cosineSimilarity(detection.embedding, referenceEmbedding);
+              setFaceSimilarity(sim);
+              isMatch = sim >= 0.65;
+              setFaceMatched(isMatch);
             } else {
-              setLivenessInstruction('Please blink or move head slightly');
+              setFaceSimilarity(0);
+              setFaceMatched(false);
+            }
+
+            const livenessOk = detection.livenessScore >= 0.5;
+            setLivenessPassed(livenessOk);
+
+            if (!referenceEmbedding) {
+              setLivenessInstruction('No reference face template enrolled');
+            } else if (!isMatch) {
+              const pct = Math.max(0, Math.round(sim * 100));
+              setLivenessInstruction(`Face mismatch (${pct}% match) — does not match ${user?.name}`);
+            } else if (!livenessOk) {
+              setLivenessInstruction(`Identity matched (${Math.round(sim * 100)}%) — please blink or nod`);
+            } else {
+              setLivenessInstruction(`Identity & Liveness Verified (${Math.round(sim * 100)}% match) ✓`);
             }
           } else if (detection.faceCount > 1) {
             setFaceDetected(false);
+            setFaceMatched(false);
             setLivenessInstruction('Multiple faces detected - only 1 person allowed');
           } else {
             setFaceDetected(false);
+            setFaceMatched(false);
             setLivenessInstruction('Center your face in the oval');
           }
         }
@@ -192,7 +222,7 @@ export const CheckInPage: React.FC = () => {
 
     animId = requestAnimationFrame(processFrame);
     return () => cancelAnimationFrame(animId);
-  }, [cameraReady]);
+  }, [cameraReady, referenceEmbedding, user?.name]);
 
   const handlePerformCheckIn = async () => {
     if (!userCoords) {
@@ -202,6 +232,11 @@ export const CheckInPage: React.FC = () => {
 
     if (!faceDetected || lastEmbedding.length === 0) {
       message.error('Face not detected. Please look directly at the camera.');
+      return;
+    }
+
+    if (!faceMatched) {
+      message.error(`Face does not match registered employee (${Math.max(0, Math.round(faceSimilarity * 100))}% match - requires ≥ 65%)`);
       return;
     }
 
@@ -236,7 +271,12 @@ export const CheckInPage: React.FC = () => {
     }
   };
 
-  const isReadyToSubmit = faceDetected && livenessPassed && insideGeofence === true && !submitting;
+  const isReadyToSubmit =
+    faceDetected &&
+    faceMatched &&
+    livenessPassed &&
+    insideGeofence === true &&
+    !submitting;
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
@@ -310,7 +350,7 @@ export const CheckInPage: React.FC = () => {
 
               <div
                 className={`face-guide-overlay ${
-                  faceDetected ? (livenessPassed ? 'detected' : 'warning') : ''
+                  faceDetected ? (faceMatched && livenessPassed ? 'detected' : 'warning') : ''
                 }`}
               />
 
@@ -399,7 +439,7 @@ export const CheckInPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 3. Live Face Match */}
+                {/* 3. Camera Face Detection & Clarity */}
                 <div className="status-step-item">
                   {faceDetected ? (
                     <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
@@ -407,15 +447,45 @@ export const CheckInPage: React.FC = () => {
                     <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18 }} />
                   )}
                   <div>
-                    <Text strong>Live Face Match & Clarity</Text>
+                    <Text strong>Live Camera Face Detection</Text>
                     <br />
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      {faceDetected ? `Quality: ${(qualityScore * 100).toFixed(0)}% (Matching reference)` : 'No live face in view'}
+                      {faceDetected
+                        ? `Live face detected in frame (Clarity: ${(qualityScore * 100).toFixed(0)}%)`
+                        : 'No face in camera view'}
                     </Text>
                   </div>
                 </div>
 
-                {/* 3. Liveness Anti-Spoof */}
+                {/* 4. 1:1 Biometric Identity Match */}
+                <div className="status-step-item">
+                  {faceMatched ? (
+                    <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
+                  ) : (
+                    <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18 }} />
+                  )}
+                  <div>
+                    <Text strong>Biometric Identity Match (1:1)</Text>
+                    <br />
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: faceMatched ? '#52c41a' : '#cf1322',
+                        fontWeight: '500',
+                      }}
+                    >
+                      {!user?.face_enrolled
+                        ? 'Reference photo required'
+                        : !faceDetected
+                        ? 'Position face to verify'
+                        : faceMatched
+                        ? `Identity Verified: ${(faceSimilarity * 100).toFixed(0)}% match with ${user?.name} ✓`
+                        : `Face Mismatch: ${Math.max(0, Math.round(faceSimilarity * 100))}% match (Requires ≥ 65%)`}
+                    </Text>
+                  </div>
+                </div>
+
+                {/* 5. Liveness Anti-Spoof */}
                 <div className="status-step-item">
                   {livenessPassed ? (
                     <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
@@ -431,7 +501,7 @@ export const CheckInPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 4. GPS Accuracy */}
+                {/* 6. GPS Accuracy */}
                 <div className="status-step-item">
                   {userCoords && userCoords.accuracy <= 100 ? (
                     <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
@@ -447,14 +517,12 @@ export const CheckInPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 5. Office Geofence */}
+                {/* 7. Office Geofence */}
                 <div className="status-step-item">
                   {insideGeofence === true ? (
                     <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
-                  ) : insideGeofence === false ? (
-                    <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18 }} />
                   ) : (
-                    <CloseCircleFilled style={{ color: '#8c8c8c', fontSize: 18 }} />
+                    <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18 }} />
                   )}
                   <div>
                     <Text strong>Office Geofence</Text>
@@ -480,14 +548,24 @@ export const CheckInPage: React.FC = () => {
                 loading={submitting}
                 style={{
                   height: 50,
-                  fontSize: 16,
+                  fontSize: 15,
                   borderRadius: 8,
                   background: isReadyToSubmit ? '#16a34a' : undefined,
                   borderColor: isReadyToSubmit ? '#16a34a' : undefined,
                 }}
                 onClick={handlePerformCheckIn}
               >
-                {insideGeofence === false ? 'OUTSIDE GEOFENCE' : 'CONFIRM CHECK-IN'}
+                {insideGeofence === false
+                  ? 'OUTSIDE GEOFENCE'
+                  : !user?.face_enrolled
+                  ? 'ENROLL FACE FIRST'
+                  : !faceDetected
+                  ? 'POSITION FACE IN OVAL'
+                  : !faceMatched
+                  ? 'FACE MISMATCH — CANNOT CHECK IN'
+                  : !livenessPassed
+                  ? 'AWAITING LIVENESS CHECK'
+                  : 'CONFIRM CHECK-IN'}
               </Button>
             </Card>
           </div>

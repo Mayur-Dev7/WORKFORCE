@@ -216,11 +216,12 @@ export class UsersService {
     });
   }
 
-  async getReferenceFace(userId: string): Promise<{ enrolled: boolean; referenceImage: string | null }> {
+  async getReferenceFace(userId: string): Promise<{ enrolled: boolean; referenceImage: string | null; embedding: number[] | null }> {
     const template = await faceTemplatesRepository.findByUserId(userId);
     return {
       enrolled: !!template,
       referenceImage: template?.reference_image || null,
+      embedding: template?.embedding || null,
     };
   }
 }
