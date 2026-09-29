@@ -84,6 +84,25 @@ export class OfficesController {
       next(err);
     }
   }
+
+  async delete(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const deleted = await officesService.delete(req.user!.userId, req.params.id);
+      res.status(200).json({
+        success: true,
+        data: { deleted },
+      });
+    } catch (err: any) {
+      if (err.statusCode) {
+        res.status(err.statusCode).json({
+          success: false,
+          error: { code: ErrorCode.VALIDATION_ERROR, message: err.message },
+        });
+        return;
+      }
+      next(err);
+    }
+  }
 }
 
 export const officesController = new OfficesController();

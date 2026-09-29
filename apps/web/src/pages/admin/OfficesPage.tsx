@@ -25,6 +25,7 @@ import {
   CompassOutlined,
   TeamOutlined,
   AimOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import { api } from '../../services/api.js';
 import { Office, ApiResponse, PermissionKey } from '@workforce/shared';
@@ -205,6 +206,16 @@ export const OfficesPage: React.FC = () => {
     }
   };
 
+  const handleDeleteOffice = async (officeId: string, officeName: string) => {
+    try {
+      await api.delete(`/offices/${officeId}`);
+      message.success(`Office "${officeName}" deleted successfully`);
+      fetchOffices();
+    } catch (err: any) {
+      message.error(err.response?.data?.error?.message || 'Failed to delete office');
+    }
+  };
+
   const totalEmployeesInCompany = offices.reduce((sum, o) => sum + (o.employee_count || 0), 0);
 
   const columns = [
@@ -263,29 +274,58 @@ export const OfficesPage: React.FC = () => {
     {
       title: 'Actions',
       key: 'actions',
-      render: (_: any, r: Office) => (
-        <Space>
-          <PermissionGate permission={PermissionKey.OFFICE_UPDATE}>
-            <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(r)}>
-              Edit on Map
-            </Button>
-          </PermissionGate>
-
-          <PermissionGate permission={PermissionKey.OFFICE_UPDATE}>
-            <Popconfirm
-              title="Apply to ALL Company Employees?"
-              description={`Every employee in your company will be assigned to "${r.name}". Their attendance check-in will be validated against this office's coordinates.`}
-              onConfirm={() => handleApplyToAll(r.id, r.name)}
-              okText="Yes, Apply to All"
-              cancelText="Cancel"
-            >
-              <Button size="small" type="primary" ghost icon={<TeamOutlined />}>
-                Apply to All Staff
+      render: (_: any, r: Office) => {
+        const hasEmployees = Boolean(r.employee_count && r.employee_count > 0);
+        return (
+          <Space>
+            <PermissionGate permission={PermissionKey.OFFICE_UPDATE}>
+              <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(r)}>
+                Edit on Map
               </Button>
-            </Popconfirm>
-          </PermissionGate>
-        </Space>
-      ),
+            </PermissionGate>
+
+            <PermissionGate permission={PermissionKey.OFFICE_UPDATE}>
+              <Popconfirm
+                title="Apply to ALL Company Employees?"
+                description={`Every employee in your company will be assigned to "${r.name}". Their attendance check-in will be validated against this office's coordinates.`}
+                onConfirm={() => handleApplyToAll(r.id, r.name)}
+                okText="Yes, Apply to All"
+                cancelText="Cancel"
+              >
+                <Button size="small" type="primary" ghost icon={<TeamOutlined />}>
+                  Apply to All Staff
+                </Button>
+              </Popconfirm>
+            </PermissionGate>
+
+            <PermissionGate permission={PermissionKey.OFFICE_DISABLE}>
+              <Popconfirm
+                title={`Delete "${r.name}"?`}
+                description={
+                  hasEmployees
+                    ? `Cannot delete: ${r.employee_count} employee(s) are assigned to this office. Reassign them first.`
+                    : 'Are you sure you want to permanently delete this office geofence?'
+                }
+                disabled={hasEmployees}
+                onConfirm={() => handleDeleteOffice(r.id, r.name)}
+                okText="Yes, Delete"
+                okButtonProps={{ danger: true }}
+                cancelText="Cancel"
+              >
+                <Button
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={hasEmployees}
+                  title={hasEmployees ? 'Cannot delete while employees are assigned' : 'Delete Geofence'}
+                >
+                  Delete
+                </Button>
+              </Popconfirm>
+            </PermissionGate>
+          </Space>
+        );
+      },
     },
   ];
 

@@ -145,6 +145,12 @@ export class OfficesRepository {
     const res = await queryClient.query<OfficeRow>(query, values);
     return res.rows[0] || null;
   }
+
+  async delete(id: string, client?: PoolClient): Promise<boolean> {
+    const queryClient = client || pool;
+    const res = await queryClient.query(`DELETE FROM offices WHERE id = $1`, [id]);
+    return (res.rowCount ?? 0) > 0;
+  }
 }
 
 export const officesRepository = new OfficesRepository();

@@ -163,6 +163,49 @@ export class OfficesService {
       return { affectedEmployees };
     });
   }
+
+  async delete(actorUserId: string, id: string): Promise<boolean> {
+    return withTransaction(async (client) => {
+      const office = await officesRepository.findById(id, client);
+      if (!office) {
+        const err = new Error('Office not found');
+        (err as any).statusCode = 404;
+        throw err;
+      }
+
+      if (office.employee_count && office.employee_count > 0) {
+        const err = new Error(
+          `Cannot delete "${office.name}" because ${office.employee_count} employee(s) are assigned to it. Please reassign them to another office first.`
+        );
+        (err as any).statusCode = 400;
+        throw err;
+      }
+
+      // Clean up any attendance sessions or holidays associated with this office
+      await client.query(`DELETE FROM attendance_sessions WHERE office_id = $1`, [id]);
+      await client.query(`DELETE FROM holidays WHERE office_id = $1`, [id]);
+
+      const deleted = await officesRepository.delete(id, client);
+
+      await auditLogsRepository.create(
+        {
+          actor_user_id: actorUserId,
+          action: AuditAction.OFFICE_DELETED,
+          entity_type: 'office',
+          entity_id: id,
+          metadata: {
+            name: office.name,
+            address: office.address,
+            latitude: office.latitude,
+            longitude: office.longitude,
+          },
+        },
+        client
+      );
+
+      return deleted;
+    });
+  }
 }
 
 export const officesService = new OfficesService();
