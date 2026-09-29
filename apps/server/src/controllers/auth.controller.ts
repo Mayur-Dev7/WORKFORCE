@@ -80,17 +80,20 @@ export class AuthController {
         });
         return;
       }
-      const user = await authService.refresh(req.cookies?.refreshToken || '');
+      const user = await authService.getMe(req.user.userId);
+      if (!user) {
+        res.status(401).json({
+          success: false,
+          error: { code: ErrorCode.UNAUTHORIZED, message: 'User not found or session invalid' },
+        });
+        return;
+      }
       res.status(200).json({
         success: true,
-        data: user.user,
+        data: user,
       });
-    } catch {
-      // Fallback to token payload
-      res.status(200).json({
-        success: true,
-        data: req.user,
-      });
+    } catch (err) {
+      next(err);
     }
   }
 

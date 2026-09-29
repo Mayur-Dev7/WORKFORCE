@@ -211,6 +211,31 @@ export class AuthService {
       throw err;
     }
   }
+
+  async getMe(userId: string): Promise<User | null> {
+    const userRow = await usersRepository.findById(userId);
+    if (!userRow || !userRow.is_active) return null;
+    return {
+      id: userRow.id,
+      company_id: userRow.company_id,
+      office_id: userRow.office_id,
+      department_id: userRow.department_id,
+      role_id: userRow.role_id,
+      employee_code: userRow.employee_code,
+      name: userRow.name,
+      email: userRow.email,
+      is_active: userRow.is_active,
+      face_enrolled: userRow.face_enrolled,
+      created_at: userRow.created_at.toISOString(),
+      updated_at: userRow.updated_at.toISOString(),
+      last_login_at: userRow.last_login_at ? userRow.last_login_at.toISOString() : null,
+      company_name: userRow.company_name,
+      office_name: userRow.office_name,
+      department_name: userRow.department_name,
+      role_name: userRow.role_name as RoleName,
+      permissions: (userRow.permissions || []) as PermissionKey[],
+    };
+  }
 }
 
 export const authService = new AuthService();

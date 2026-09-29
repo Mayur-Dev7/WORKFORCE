@@ -29,8 +29,12 @@ import { Office, ApiResponse, AttendanceSession } from '@workforce/shared';
 const { Title, Text, Paragraph } = Typography;
 
 export const CheckInPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    refreshUser();
+  }, [refreshUser]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
