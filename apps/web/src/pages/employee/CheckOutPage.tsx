@@ -16,7 +16,7 @@ import {
 } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext.js';
 import { api } from '../../services/api.js';
-import { analyzeVideoFrame, cosineSimilarity } from '../../services/face.client.js';
+import { analyzeVideoFrame, evaluateFaceMatch } from '../../services/face.client.js';
 import { Office, ApiResponse, AttendanceSession } from '@workforce/shared';
 
 const { Title, Text } = Typography;
@@ -157,30 +157,25 @@ export const CheckOutPage: React.FC = () => {
             setLivenessScore(detection.livenessScore);
             setLastEmbedding(detection.embedding);
 
-            let isMatch = false;
-            let sim = 0;
-            if (referenceEmbedding && referenceEmbedding.length > 0 && detection.embedding.length > 0) {
-              sim = cosineSimilarity(detection.embedding, referenceEmbedding);
-              setFaceSimilarity(sim);
-              isMatch = sim >= 0.65;
-              setFaceMatched(isMatch);
-            } else {
-              setFaceSimilarity(0);
-              setFaceMatched(false);
-            }
+            // Real-time 1:1 Biometric Comparison against enrolled reference
+            const evalResult = (referenceEmbedding && referenceEmbedding.length > 0 && detection.embedding.length > 0)
+              ? evaluateFaceMatch(detection.embedding, referenceEmbedding)
+              : { matched: false, rawCosine: 0, displayPercentage: 0 };
+
+            setFaceSimilarity(evalResult.displayPercentage);
+            setFaceMatched(evalResult.matched);
 
             const livenessOk = detection.livenessScore >= 0.5;
             setLivenessPassed(livenessOk);
 
             if (!referenceEmbedding) {
               setLivenessInstruction('No reference face template enrolled');
-            } else if (!isMatch) {
-              const pct = Math.max(0, Math.round(sim * 100));
-              setLivenessInstruction(`Face mismatch (${pct}% match) — does not match ${user?.name}`);
+            } else if (!evalResult.matched) {
+              setLivenessInstruction(`Face mismatch (${evalResult.displayPercentage}% match) — does not match ${user?.name}`);
             } else if (!livenessOk) {
-              setLivenessInstruction(`Identity matched (${Math.round(sim * 100)}%) — please blink or nod`);
+              setLivenessInstruction(`Identity verified (${evalResult.displayPercentage}%) — please blink or nod`);
             } else {
-              setLivenessInstruction(`Identity & Liveness Verified (${Math.round(sim * 100)}% match) ✓`);
+              setLivenessInstruction(`Identity & Liveness Verified (${evalResult.displayPercentage}% match) ✓`);
             }
           } else if (detection.faceCount > 1) {
             setFaceDetected(false);
@@ -349,8 +344,8 @@ export const CheckOutPage: React.FC = () => {
                         : !faceDetected
                         ? 'Position face to verify'
                         : faceMatched
-                        ? `Identity Verified: ${(faceSimilarity * 100).toFixed(0)}% match with ${user?.name} ✓`
-                        : `Face Mismatch: ${Math.max(0, Math.round(faceSimilarity * 100))}% match (Requires ≥ 65%)`}
+                        ? `Identity Verified: ${faceSimilarity}% match with ${user?.name} ✓`
+                        : `Face Mismatch: ${faceSimilarity}% match (Does not match ${user?.name})`}
                     </Text>
                   </div>
                 </div>

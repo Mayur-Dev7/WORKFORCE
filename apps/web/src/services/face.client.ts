@@ -53,6 +53,43 @@ export function cosineSimilarity(embeddingA: number[], embeddingB: number[]): nu
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+export const BIOMETRIC_MATCH_THRESHOLD = 0.82;
+
+export interface FaceMatchEvaluation {
+  matched: boolean;
+  rawCosine: number;
+  displayPercentage: number;
+}
+
+/**
+ * Evaluates candidate face against enrolled reference template using 0.82 cosine threshold.
+ * Normalizes raw high-dimensional positive cosine similarity (0.65-1.00) to clear human percentage:
+ * - Different person (raw <= 0.65): 0 - 20%
+ * - Borderline / similar features (0.65 - 0.82): 20 - 65% (FAIL)
+ * - Authentic match (>= 0.82): 70 - 100% (PASS)
+ */
+export function evaluateFaceMatch(candidateEmbedding: number[], referenceEmbedding: number[]): FaceMatchEvaluation {
+  if (!candidateEmbedding || !referenceEmbedding || candidateEmbedding.length === 0 || referenceEmbedding.length === 0) {
+    return { matched: false, rawCosine: 0, displayPercentage: 0 };
+  }
+  const raw = cosineSimilarity(candidateEmbedding, referenceEmbedding);
+  const matched = raw >= BIOMETRIC_MATCH_THRESHOLD;
+  let displayScore = 0;
+  if (raw <= 0.65) {
+    displayScore = Math.max(0, Math.round(((raw - 0.50) / 0.15) * 20));
+  } else if (raw < BIOMETRIC_MATCH_THRESHOLD) {
+    displayScore = Math.round(20 + ((raw - 0.65) / (BIOMETRIC_MATCH_THRESHOLD - 0.65)) * 45);
+  } else {
+    displayScore = Math.round(70 + ((raw - BIOMETRIC_MATCH_THRESHOLD) / (1.0 - BIOMETRIC_MATCH_THRESHOLD)) * 30);
+  }
+  displayScore = Math.max(0, Math.min(100, displayScore));
+  return {
+    matched,
+    rawCosine: raw,
+    displayPercentage: displayScore,
+  };
+}
+
 export async function getHuman(): Promise<Human> {
   if (!humanInstance) {
     humanInstance = new Human(humanConfig);
