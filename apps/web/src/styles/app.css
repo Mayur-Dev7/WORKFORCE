@@ -259,13 +259,17 @@ html, body {
   }
 }
 
-/* ─── Leave Page — card list vs table toggle ────── */
-.leave-card-list  { display: block; }
-.leave-table-desktop { display: none; }
+/* ─── Leave & Attendance Pages — card list vs table toggle ────── */
+.leave-card-list,
+.attendance-card-list { display: block; }
+.leave-table-desktop,
+.attendance-table-desktop { display: none; }
 
-@media (min-width: 700px) {
-  .leave-card-list     { display: none; }
-  .leave-table-desktop { display: block; }
+@media (min-width: 768px) {
+  .leave-card-list,
+  .attendance-card-list { display: none; }
+  .leave-table-desktop,
+  .attendance-table-desktop { display: block; }
 }
 
 .leave-apply-drawer .ant-drawer-content-wrapper {
