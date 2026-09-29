@@ -35,6 +35,8 @@ import type { Dayjs } from 'dayjs';
 import type { LeaveRequest, LeaveBalance, LeaveType } from '@workforce/shared';
 import { PermissionKey } from '@workforce/shared';
 import { useAuth } from '../../context/AuthContext.js';
+import { useIsMobile } from '../../hooks/useMediaQuery.js';
+import { ResponsiveDateRangePicker } from '../../components/common/ResponsiveDateRangePicker.js';
 import {
   getMyLeaveRequests,
   applyLeave,
@@ -44,7 +46,6 @@ import {
 } from '../../services/leave.api.js';
 
 const { Title, Text } = Typography;
-const { RangePicker } = DatePicker;
 const { TextArea } = Input;
 
 const STATUS_COLOR: Record<string, string> = {
@@ -165,7 +166,7 @@ export const LeavePage: React.FC = () => {
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 700;
+  const isMobile = useIsMobile(768);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -317,12 +318,12 @@ export const LeavePage: React.FC = () => {
       </Form.Item>
 
       <Form.Item label="Date Range" required>
-        <RangePicker
+        <ResponsiveDateRangePicker
           style={{ width: '100%' }}
           size="large"
           value={dateRange}
-          onChange={(val) => setDateRange(val as [Dayjs | null, Dayjs | null] | null)}
-          disabledDate={(d) => d && d < dayjs().startOf('day')}
+          onChange={(val) => setDateRange(val)}
+          disabledDate={(d) => Boolean(d && d < dayjs().startOf('day'))}
           format="DD MMM YYYY"
         />
       </Form.Item>
