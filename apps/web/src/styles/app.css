@@ -4,13 +4,115 @@
   padding: 0;
 }
 
-body {
+html, body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background-color: #f5f7fa;
   color: #1f2937;
   -webkit-font-smoothing: antialiased;
+  /* prevent overscroll bounce on mobile */
+  overscroll-behavior: none;
 }
 
+/* ─── Page Content ─────────────────────────────── */
+.app-content {
+  padding: 16px;
+  min-height: 280px;
+  /* extra bottom space for mobile bottom nav */
+  padding-bottom: 80px;
+}
+
+@media (min-width: 768px) {
+  .app-content {
+    padding: 24px;
+    padding-bottom: 24px;
+  }
+}
+
+/* ─── Desktop sidebar: hide on mobile ─────────── */
+.app-sider-desktop {
+  display: none !important;
+}
+@media (min-width: 768px) {
+  .app-sider-desktop {
+    display: flex !important;
+  }
+}
+
+/* ─── Mobile drawer: only shown via Ant Drawer logic, no CSS needed ── */
+
+/* ─── Mobile hamburger: hide on desktop ────────── */
+.mobile-menu-trigger {
+  display: inline-flex !important;
+}
+@media (min-width: 768px) {
+  .mobile-menu-trigger {
+    display: none !important;
+  }
+  .header-dept-tag {
+    display: inline-flex;
+  }
+}
+
+/* ─── Bottom Navigation Bar ─────────────────────── */
+.mobile-bottom-nav {
+  display: flex;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 62px;
+  background: #fff;
+  border-top: 1px solid #e5e7eb;
+  z-index: 999;
+  padding: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.08);
+}
+@media (min-width: 768px) {
+  .mobile-bottom-nav {
+    display: none;
+  }
+}
+
+.mob-nav-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #8c8c8c;
+  font-size: 10px;
+  padding: 6px 4px;
+  transition: color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+  min-width: 0;
+}
+.mob-nav-btn .anticon {
+  font-size: 20px;
+}
+.mob-nav-btn span {
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.mob-nav-btn.mob-active {
+  color: #1677ff;
+}
+.mob-nav-btn.mob-checkin.mob-active {
+  color: #16a34a;
+}
+.mob-nav-btn.mob-checkout.mob-active {
+  color: #fa8c16;
+}
+.mob-nav-btn:active {
+  opacity: 0.7;
+}
+
+/* ─── Camera / Biometric ────────────────────────── */
 .camera-container {
   position: relative;
   width: 100%;
@@ -38,8 +140,10 @@ body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 240px;
-  height: 300px;
+  width: 60%;
+  max-width: 240px;
+  height: 75%;
+  max-height: 300px;
   border: 3px dashed rgba(255, 255, 255, 0.8);
   border-radius: 50%;
   pointer-events: none;
@@ -62,31 +166,95 @@ body {
 
 .camera-status-badge {
   position: absolute;
-  top: 16px;
-  left: 16px;
+  top: 12px;
+  left: 12px;
   z-index: 10;
 }
 
 .liveness-instruction-box {
   position: absolute;
-  bottom: 20px;
+  bottom: 14px;
   left: 50%;
   transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.75);
   color: #fff;
-  padding: 8px 18px;
+  padding: 6px 14px;
   border-radius: 20px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   z-index: 10;
   text-align: center;
   backdrop-filter: blur(4px);
+  white-space: nowrap;
 }
 
+/* ─── Check-in / Check-out responsive grid ─────── */
+.checkin-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+@media (min-width: 700px) {
+  .checkin-grid {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 24px;
+    align-items: start;
+  }
+}
+
+/* ─── Status step items ─────────────────────────── */
 .status-step-item {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-bottom: 8px;
   font-size: 14px;
+}
+
+/* ─── Responsive tables ─────────────────────────── */
+@media (max-width: 767px) {
+  .ant-table {
+    font-size: 13px;
+  }
+  .ant-table-thead > tr > th,
+  .ant-table-tbody > tr > td {
+    padding: 8px 6px !important;
+  }
+}
+
+/* ─── Cards / Forms ─────────────────────────────── */
+@media (max-width: 767px) {
+  .ant-card-body {
+    padding: 14px !important;
+  }
+  .ant-form-item {
+    margin-bottom: 14px;
+  }
+}
+
+/* ─── Stat cards equal height ───────────────────── */
+.stat-card {
+  border-radius: 12px;
+}
+
+/* ─── Touch targets ─────────────────────────────── */
+@media (max-width: 767px) {
+  .ant-btn {
+    min-height: 36px;
+  }
+  .ant-btn-lg {
+    min-height: 44px;
+    font-size: 15px !important;
+  }
+}
+
+/* ─── Login page full-screen on mobile ──────────── */
+@media (max-width: 767px) {
+  .login-card {
+    border-radius: 0 !important;
+    min-height: 100vh;
+    box-shadow: none !important;
+    padding: 32px 20px !important;
+  }
 }

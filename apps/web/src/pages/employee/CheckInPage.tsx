@@ -302,7 +302,7 @@ export const CheckInPage: React.FC = () => {
           />
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24 }}>
+        <div className="checkin-grid">
           {/* Left: Video / Camera Area */}
           <div>
             <div className="camera-container">

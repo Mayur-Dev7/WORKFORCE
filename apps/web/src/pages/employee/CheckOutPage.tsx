@@ -227,7 +227,7 @@ export const CheckOutPage: React.FC = () => {
           />
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24 }}>
+        <div className="checkin-grid">
           <div>
             <div className="camera-container">
               <video ref={videoRef} playsInline muted className="camera-video" />
