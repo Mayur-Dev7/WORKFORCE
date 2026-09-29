@@ -258,7 +258,8 @@ export const AttendanceHistoryPage: React.FC = () => {
       holidayDetails?: Holiday;
       isAbsent: boolean;
       durationMinutes: number;
-      badgeText: string;
+      badgeTextDesktop: string;
+      badgeTextMobile: string;
       statusClass: 'full' | 'short' | 'leave' | 'holiday' | 'weekend' | 'absent' | 'future';
       timeRangeText?: string;
       daySessions: AttendanceSession[];
@@ -296,14 +297,16 @@ export const AttendanceHistoryPage: React.FC = () => {
       const daySessions = sessions.filter((s) => dayjs(s.check_in_at).isSame(date, 'day'));
 
       let durationMins = 0;
-      let badgeText = '';
+      let badgeTextDesktop = '';
+      let badgeTextMobile = '';
       let statusClass: 'full' | 'short' | 'leave' | 'holiday' | 'weekend' | 'absent' | 'future' = 'future';
       let isAbsent = false;
       let timeRangeText: string | undefined;
 
       if (isFuture) {
         statusClass = 'future';
-        badgeText = isHoliday ? (holiday?.name || 'Holiday') : isWeekend ? 'Weekend' : '';
+        badgeTextDesktop = isHoliday ? (holiday?.name || 'Holiday') : isWeekend ? 'Weekend' : '';
+        badgeTextMobile = isHoliday ? 'Holiday' : isWeekend ? 'Off' : '';
       } else if (daySessions.length > 0) {
         // Real punches exist for this day
         presentDaysCount++;
@@ -322,34 +325,45 @@ export const AttendanceHistoryPage: React.FC = () => {
         const lastCheckOut = lastSession.check_out_at ? dayjs(lastSession.check_out_at).format('hh:mm A') : 'Active';
         timeRangeText = `${firstCheckIn} - ${lastCheckOut}`;
 
+        const hrs = Math.floor(durationMins / 60);
+        const mins = durationMins % 60;
+        const compactTime = hrs > 0 ? `${hrs}h${mins > 0 ? ` ${mins}m` : ''}` : `${mins}m`;
+
         // Standard: >= 8h is full day, < 8h is half/short day
         if (durationMins >= 8 * 60) {
           statusClass = 'full';
-          badgeText = formatDurationClean(durationMins);
+          badgeTextDesktop = formatDurationClean(durationMins);
+          badgeTextMobile = compactTime;
         } else if (durationMins > 0) {
           statusClass = 'short';
-          badgeText = formatDurationClean(durationMins);
+          badgeTextDesktop = formatDurationClean(durationMins);
+          badgeTextMobile = compactTime;
         } else {
           statusClass = 'short';
-          badgeText = 'Logged';
+          badgeTextDesktop = 'Logged';
+          badgeTextMobile = 'Logged';
         }
       } else if (isHoliday) {
         holidayDaysCount++;
         statusClass = 'holiday';
-        badgeText = holiday?.name || 'Holiday';
+        badgeTextDesktop = holiday?.name || 'Holiday';
+        badgeTextMobile = 'Holiday';
       } else if (isLeave) {
         leaveDaysCount++;
         statusClass = 'leave';
-        badgeText = leave?.leave_type_name || 'On Leave';
+        badgeTextDesktop = leave?.leave_type_name || 'On Leave';
+        badgeTextMobile = 'Leave';
       } else if (isWeekend) {
         statusClass = 'weekend';
-        badgeText = 'Weekly Off';
+        badgeTextDesktop = 'Weekly Off';
+        badgeTextMobile = 'Off';
       } else {
         // Working day in the past with no punch
         absentDaysCount++;
         isAbsent = true;
         statusClass = 'absent';
-        badgeText = 'No Punch';
+        badgeTextDesktop = 'No Punch';
+        badgeTextMobile = 'Absent';
       }
 
       daysList.push({
@@ -364,7 +378,8 @@ export const AttendanceHistoryPage: React.FC = () => {
         holidayDetails: holiday,
         isAbsent,
         durationMinutes: durationMins,
-        badgeText,
+        badgeTextDesktop,
+        badgeTextMobile,
         statusClass,
         timeRangeText,
         daySessions,
@@ -703,9 +718,10 @@ export const AttendanceHistoryPage: React.FC = () => {
                       {d.isToday && <span className="attendance-today-chip">Today</span>}
                     </div>
 
-                    {d.badgeText && (
-                      <div className={`attendance-day-badge ${d.statusClass}`} title={d.badgeText}>
-                        {d.badgeText}
+                    {d.badgeTextDesktop && (
+                      <div className={`attendance-day-badge ${d.statusClass}`} title={d.badgeTextDesktop}>
+                        <span className="badge-text-mobile">{d.badgeTextMobile}</span>
+                        <span className="badge-text-desktop">{d.badgeTextDesktop}</span>
                       </div>
                     )}
 
