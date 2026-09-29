@@ -23,7 +23,7 @@ export async function runSeed(): Promise<void> {
     const companyRes = await client.query<{ id: string }>(`
       INSERT INTO companies (name)
       VALUES ('Acme Global Workforce')
-      ON CONFLICT DO NOTHING
+      ON CONFLICT (name) DO NOTHING
       RETURNING id;
     `);
 
