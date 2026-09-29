@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Card,
   Table,
   Button,
-  DatePicker,
   Select,
   Space,
   Tag,
@@ -11,22 +10,107 @@ import {
   message,
   Row,
   Col,
+  Pagination,
+  Empty,
 } from 'antd';
-import { DownloadOutlined, FilterOutlined, ReloadOutlined } from '@ant-design/icons';
+import { DownloadOutlined, FilterOutlined, ReloadOutlined, FileTextOutlined, EnvironmentOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { api } from '../../services/api.js';
 import { Office, Department, AttendanceReportItem, ApiResponse, PermissionKey } from '@workforce/shared';
 import { PermissionGate } from '../../components/common/PermissionGate.js';
+import { ResponsiveDateRangePicker } from '../../components/common/ResponsiveDateRangePicker.js';
+import { useIsMobile } from '../../hooks/useMediaQuery.js';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
-const { RangePicker } = DatePicker;
+
+/** Mobile Card representation for a report row */
+const ReportCard: React.FC<{ r: AttendanceReportItem }> = ({ r }) => {
+  const isCompleted = Boolean(r.check_out_at);
+  const matchPct = Math.round((r.check_in_face_similarity || 0) * 100);
+
+  return (
+    <Card
+      size="small"
+      style={{
+        marginBottom: 10,
+        borderRadius: 12,
+        border: '1px solid #e5e7eb',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+      }}
+      styles={{ body: { padding: '14px 14px' } }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+        <div>
+          <Text strong style={{ fontSize: 15 }}>{r.employee_name}</Text>
+          <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+            {r.employee_code} • {r.department_name || 'No Dept'}
+          </Text>
+        </div>
+
+        <Tag color={isCompleted ? 'default' : 'processing'} style={{ margin: 0, fontSize: 11 }}>
+          {isCompleted ? 'Completed' : 'In Session'}
+        </Tag>
+      </div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, 1fr)',
+          gap: 8,
+          background: '#f9fafb',
+          borderRadius: 8,
+          padding: '10px 12px',
+          margin: '10px 0',
+        }}
+      >
+        <div>
+          <Text type="secondary" style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.5px' }}>
+            CHECK-IN
+          </Text>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#111827', marginTop: 2 }}>
+            {dayjs(r.check_in_at).format('MMM DD, hh:mm A')}
+          </div>
+        </div>
+
+        <div>
+          <Text type="secondary" style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.5px' }}>
+            CHECK-OUT
+          </Text>
+          <div style={{ fontSize: 12, fontWeight: 600, color: isCompleted ? '#111827' : '#1677ff', marginTop: 2 }}>
+            {r.check_out_at ? dayjs(r.check_out_at).format('MMM DD, hh:mm A') : 'Currently Active'}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Tag color="blue" icon={<EnvironmentOutlined />} style={{ margin: 0, fontSize: 11 }}>
+          {r.office_name}
+        </Tag>
+        <Tag color="green" icon={<SafetyCertificateOutlined />} style={{ margin: 0, fontSize: 11 }}>
+          Match: {matchPct}%
+        </Tag>
+        <Text type="secondary" style={{ fontSize: 11 }}>
+          📍 {Math.round(r.check_in_distance_meters)}m
+        </Text>
+        {r.duration_minutes !== null && (
+          <Text strong style={{ fontSize: 12, marginLeft: 'auto' }}>
+            {Math.floor(r.duration_minutes / 60)}h {r.duration_minutes % 60}m
+          </Text>
+        )}
+      </div>
+    </Card>
+  );
+};
 
 export const ReportsPage: React.FC = () => {
+  const isMobile = useIsMobile(768);
   const [reports, setReports] = useState<AttendanceReportItem[]>([]);
   const [offices, setOffices] = useState<Office[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [mobilePage, setMobilePage] = useState(1);
+  const mobilePageSize = 10;
 
   // Filters
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
@@ -103,6 +187,11 @@ export const ReportsPage: React.FC = () => {
     }
   };
 
+  const paginatedMobileReports = useMemo(() => {
+    const startIdx = (mobilePage - 1) * mobilePageSize;
+    return reports.slice(startIdx, startIdx + mobilePageSize);
+  }, [reports, mobilePage]);
+
   const columns = [
     {
       title: 'Employee',
@@ -138,81 +227,94 @@ export const ReportsPage: React.FC = () => {
       title: 'Check-Out',
       dataIndex: 'check_out_at',
       key: 'check_out',
-      render: (val: string | null) => (val ? dayjs(val).format('MMM DD, YYYY hh:mm A') : <Tag color="processing">In Session</Tag>),
+      render: (val: string | null) => (val ? dayjs(val).format('MMM DD, YYYY hh:mm A') : <Tag color="processing">In Progress</Tag>),
     },
     {
       title: 'Duration',
-      dataIndex: 'duration_minutes',
       key: 'duration',
-      render: (mins: number | null) => {
-        if (mins === null) return '--';
-        const h = Math.floor(mins / 60);
-        const m = mins % 60;
-        return `${h}h ${m}m`;
+      render: (_: any, r: AttendanceReportItem) => {
+        if (r.duration_minutes === null) return '--';
+        const hrs = Math.floor(r.duration_minutes / 60);
+        const mins = r.duration_minutes % 60;
+        return `${hrs}h ${mins}m`;
       },
     },
     {
-      title: 'Face Match',
-      dataIndex: 'check_in_face_similarity',
-      key: 'similarity',
+      title: 'Biometrics Match',
+      dataIndex: 'face_similarity',
+      key: 'face',
       render: (val: number) => <Tag color="green">{(val * 100).toFixed(0)}%</Tag>,
     },
     {
-      title: 'Geofence Distance',
-      dataIndex: 'check_in_distance_meters',
+      title: 'Distance',
+      dataIndex: 'distance_meters',
       key: 'distance',
       render: (val: number) => `${Math.round(val)}m`,
-    },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      render: (val: string) =>
-        val === 'COMPLETED' ? <Tag color="green">Completed</Tag> : <Tag color="processing">Active</Tag>,
     },
   ];
 
   return (
-    <div style={{ maxWidth: 1280, margin: '0 auto' }}>
-      <Card style={{ borderRadius: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <div>
-            <Title level={3} style={{ margin: 0 }}>
-              Workforce Attendance Reports & CSV Export
-            </Title>
-            <Text type="secondary">Query historical biometric sessions and export corporate records</Text>
-          </div>
-
-          <PermissionGate permission={PermissionKey.REPORTS_EXPORT}>
-            <Button
-              type="primary"
-              icon={<DownloadOutlined />}
-              onClick={handleExportCsv}
-              loading={exporting}
-              style={{ background: '#16a34a', borderColor: '#16a34a' }}
-            >
-              Export CSV Report
-            </Button>
-          </PermissionGate>
+    <div style={{ maxWidth: 1280, margin: '0 auto', paddingBottom: 24 }}>
+      {/* ── Page Header ── */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+          flexWrap: 'wrap',
+          gap: 12,
+        }}
+      >
+        <div>
+          <Title level={4} style={{ margin: 0, fontSize: isMobile ? 18 : 22 }}>
+            <FileTextOutlined style={{ marginRight: 8, color: '#1677ff' }} />
+            Attendance Reports & CSV Export
+          </Title>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Filter, aggregate, and download corporate time tracking reports
+          </Text>
         </div>
 
-        {/* Filter Controls */}
-        <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
-          <Col xs={24} md={6}>
-            <RangePicker
-              style={{ width: '100%' }}
+        <PermissionGate permission={PermissionKey.REPORTS_EXPORT}>
+          <Button
+            type="primary"
+            icon={<DownloadOutlined />}
+            onClick={handleExportCsv}
+            loading={exporting}
+            style={{ borderRadius: 8, width: isMobile ? '100%' : 'auto' }}
+          >
+            Export to CSV
+          </Button>
+        </PermissionGate>
+      </div>
+
+      {/* ── Filter Card ── */}
+      <Card
+        size="small"
+        style={{ borderRadius: 12, marginBottom: 16 }}
+        styles={{ body: { padding: '14px 16px' } }}
+      >
+        <Row gutter={[12, 12]}>
+          <Col xs={24} sm={12} md={6}>
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Date Range</Text>
+            <ResponsiveDateRangePicker
               value={dateRange}
-              onChange={(dates) => setDateRange(dates as any)}
+              onChange={(val) => setDateRange(val)}
+              format="DD MMM YYYY"
+              size="middle"
             />
           </Col>
 
-          <Col xs={12} md={5}>
+          <Col xs={24} sm={12} md={6}>
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Office Location</Text>
             <Select
-              placeholder="Office Location"
+              placeholder="All Offices"
               allowClear
               value={officeId}
               onChange={setOfficeId}
               style={{ width: '100%' }}
+              size="middle"
             >
               {offices.map((o) => (
                 <Select.Option key={o.id} value={o.id}>
@@ -222,13 +324,15 @@ export const ReportsPage: React.FC = () => {
             </Select>
           </Col>
 
-          <Col xs={12} md={5}>
+          <Col xs={24} sm={12} md={6}>
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Department</Text>
             <Select
-              placeholder="Department"
+              placeholder="All Departments"
               allowClear
               value={departmentId}
               onChange={setDepartmentId}
               style={{ width: '100%' }}
+              size="middle"
             >
               {departments.map((d) => (
                 <Select.Option key={d.id} value={d.id}>
@@ -238,34 +342,90 @@ export const ReportsPage: React.FC = () => {
             </Select>
           </Col>
 
-          <Col xs={12} md={4}>
+          <Col xs={24} sm={12} md={6}>
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Status</Text>
             <Select
               value={status}
-              onChange={setStatus}
+              onChange={(val) => setStatus(val)}
               style={{ width: '100%' }}
+              size="middle"
             >
-              <Select.Option value="ALL">All States</Select.Option>
-              <Select.Option value="ACTIVE">Active (In Session)</Select.Option>
-              <Select.Option value="COMPLETED">Completed</Select.Option>
+              <Select.Option value="ALL">All Statuses</Select.Option>
+              <Select.Option value="COMPLETED">Completed Shifts</Select.Option>
+              <Select.Option value="ACTIVE">Currently In Session</Select.Option>
             </Select>
-          </Col>
-
-          <Col xs={12} md={4}>
-            <Button icon={<FilterOutlined />} type="primary" onClick={fetchReports} block>
-              Filter Records
-            </Button>
           </Col>
         </Row>
 
-        <Table
-          dataSource={reports}
-          columns={columns}
-          rowKey="id"
-          loading={loading}
-          pagination={{ pageSize: 12 }}
-          locale={{ emptyText: 'No attendance records match the chosen filters' }}
-        />
+        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+          <Button
+            type="primary"
+            icon={<FilterOutlined />}
+            onClick={() => { setMobilePage(1); fetchReports(); }}
+            loading={loading}
+            style={{ borderRadius: 8, flex: isMobile ? 1 : 'none' }}
+          >
+            Apply Filters
+          </Button>
+
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() => {
+              setDateRange(null);
+              setOfficeId(undefined);
+              setDepartmentId(undefined);
+              setStatus('ALL');
+              setMobilePage(1);
+              fetchReports();
+            }}
+            style={{ borderRadius: 8, flex: isMobile ? 1 : 'none' }}
+          >
+            Reset
+          </Button>
+        </div>
       </Card>
+
+      {/* ── Mobile View: Report Cards ── */}
+      <div className="report-card-list">
+        {reports.length === 0 && !loading ? (
+          <Card style={{ borderRadius: 12, textAlign: 'center', padding: '24px 0' }}>
+            <Empty description="No attendance records match the selected filters" />
+          </Card>
+        ) : (
+          <>
+            {paginatedMobileReports.map((r) => (
+              <ReportCard key={r.id} r={r} />
+            ))}
+
+            {reports.length > mobilePageSize && (
+              <div style={{ textAlign: 'center', marginTop: 16 }}>
+                <Pagination
+                  simple
+                  current={mobilePage}
+                  pageSize={mobilePageSize}
+                  total={reports.length}
+                  onChange={(page) => setMobilePage(page)}
+                />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ── Desktop View: Full Table ── */}
+      <div className="report-table-desktop">
+        <Card style={{ borderRadius: 12 }} styles={{ body: { padding: '16px' } }}>
+          <Table
+            dataSource={reports}
+            columns={columns}
+            rowKey="id"
+            loading={loading}
+            scroll={{ x: 850 }}
+            pagination={{ pageSize: 12 }}
+            locale={{ emptyText: <Empty description="No attendance records match the selected filters" /> }}
+          />
+        </Card>
+      </div>
     </div>
   );
 };

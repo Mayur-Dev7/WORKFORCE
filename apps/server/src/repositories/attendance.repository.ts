@@ -206,14 +206,19 @@ export class AttendanceRepository {
     return res.rows[0] || null;
   }
 
-  async getUserHistory(userId: string, limit = 50): Promise<AttendanceSessionRow[]> {
-    const query = `
+  async getUserHistory(userId: string, limit = 50, month?: string): Promise<AttendanceSessionRow[]> {
+    let query = `
       ${this.baseSelect}
       WHERE s.user_id = $1
-      ORDER BY s.check_in_at DESC
-      LIMIT $2
     `;
-    const res = await pool.query<AttendanceSessionRow>(query, [userId, limit]);
+    const params: any[] = [userId];
+    if (month) {
+      params.push(month);
+      query += ` AND TO_CHAR(s.check_in_at, 'YYYY-MM') = $${params.length}`;
+    }
+    params.push(limit);
+    query += ` ORDER BY s.check_in_at DESC LIMIT $${params.length}`;
+    const res = await pool.query<AttendanceSessionRow>(query, params);
     return res.rows;
   }
 

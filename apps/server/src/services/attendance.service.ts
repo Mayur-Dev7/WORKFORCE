@@ -338,8 +338,8 @@ export class AttendanceService {
     return row ? mapSessionRowToSession(row) : null;
   }
 
-  async getUserHistory(userId: string, limit = 50): Promise<AttendanceSession[]> {
-    const rows = await attendanceRepository.getUserHistory(userId, limit);
+  async getUserHistory(userId: string, limit = 50, month?: string): Promise<AttendanceSession[]> {
+    const rows = await attendanceRepository.getUserHistory(userId, limit, month);
     return rows.map(mapSessionRowToSession);
   }
 

@@ -7,11 +7,11 @@ import {
   Progress,
   Table,
   Tag,
-  Alert,
   Typography,
   Button,
   Space,
   Spin,
+  Empty,
 } from 'antd';
 import {
   TeamOutlined,
@@ -25,6 +25,7 @@ import {
 } from '@ant-design/icons';
 import { api } from '../../services/api.js';
 import { AttendanceSession, ApiResponse } from '@workforce/shared';
+import { useIsMobile } from '../../hooks/useMediaQuery.js';
 import dayjs from 'dayjs';
 
 const { Title, Text, Paragraph } = Typography;
@@ -40,7 +41,60 @@ interface AdminStats {
   employeesWithoutFace: number;
 }
 
+/** Mobile card for displaying recent live verified access feed */
+const LiveFeedCard: React.FC<{ session: AttendanceSession }> = ({ session }) => {
+  const isCompleted = Boolean(session.check_out_at);
+
+  return (
+    <Card
+      size="small"
+      style={{
+        marginBottom: 10,
+        borderRadius: 10,
+        border: '1px solid #e5e7eb',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+      }}
+      styles={{ body: { padding: '12px 14px' } }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+        <div>
+          <Text strong style={{ fontSize: 14 }}>{session.user_name}</Text>
+          <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+            {session.employee_code}
+          </Text>
+        </div>
+
+        {isCompleted ? (
+          <Tag color="default" style={{ margin: 0, fontSize: 11 }}>
+            Completed ({dayjs(session.check_out_at).format('hh:mm A')})
+          </Tag>
+        ) : (
+          <Tag color="processing" style={{ margin: 0, fontSize: 11 }}>
+            In Session
+          </Tag>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 6 }}>
+        <Tag color="blue" icon={<EnvironmentOutlined />} style={{ margin: 0, fontSize: 11 }}>
+          {session.office_name}
+        </Tag>
+        <Tag color="green" icon={<SafetyCertificateOutlined />} style={{ margin: 0, fontSize: 11 }}>
+          Match: {(session.check_in_face_similarity * 100).toFixed(0)}%
+        </Tag>
+        <Text type="secondary" style={{ fontSize: 11 }}>
+          📍 {Math.round(session.check_in_distance_meters)}m
+        </Text>
+        <Text type="secondary" style={{ fontSize: 11, marginLeft: 'auto' }}>
+          {dayjs(session.check_in_at).format('hh:mm:ss A')}
+        </Text>
+      </div>
+    </Card>
+  );
+};
+
 export const AdminDashboard: React.FC = () => {
+  const isMobile = useIsMobile(768);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [recentLiveSessions, setRecentLiveSessions] = useState<AttendanceSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,43 +183,53 @@ export const AdminDashboard: React.FC = () => {
       : 0;
 
   return (
-    <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+    <div style={{ maxWidth: 1280, margin: '0 auto', paddingBottom: 24 }}>
+      {/* ── Page Header ── */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: 20,
+          marginBottom: 16,
+          flexWrap: 'wrap',
+          gap: 12,
         }}
       >
         <div>
-          <Title level={3} style={{ margin: 0 }}>
-            Enterprise Workforce & Biometric Access Overview
+          <Title level={4} style={{ margin: 0, fontSize: isMobile ? 18 : 22 }}>
+            Workforce & Access Overview
           </Title>
-          <Text type="secondary">Real-time attendance telemetry and geofence compliance</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Real-time attendance telemetry and geofence compliance
+          </Text>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={fetchDashboardData} loading={loading}>
+        <Button
+          icon={<ReloadOutlined />}
+          onClick={fetchDashboardData}
+          loading={loading}
+          style={{ borderRadius: 8, width: isMobile ? '100%' : 'auto' }}
+        >
           Refresh Telemetry
         </Button>
       </div>
 
       {/* KPI Statistic Cards */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
+      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+        <Col xs={12} sm={12} lg={6}>
+          <Card bordered={false} style={{ borderRadius: 12 }} styles={{ body: { padding: '14px' } }}>
             <Statistic
-              title="Total Workforce"
+              title={<span style={{ fontSize: 12 }}>Total Workforce</span>}
               value={stats?.totalEmployees || 0}
               prefix={<TeamOutlined style={{ color: '#1677ff' }} />}
-              suffix={`(${stats?.activeEmployees || 0} Active)`}
+              suffix={<span style={{ fontSize: 11, color: '#8c8c8c' }}>({stats?.activeEmployees || 0})</span>}
             />
           </Card>
         </Col>
 
-        <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
+        <Col xs={12} sm={12} lg={6}>
+          <Card bordered={false} style={{ borderRadius: 12 }} styles={{ body: { padding: '14px' } }}>
             <Statistic
-              title="Today's Verified Attendance"
+              title={<span style={{ fontSize: 12 }}>Today's Verified</span>}
               value={stats?.todayAttendance || 0}
               prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
               valueStyle={{ color: '#52c41a' }}
@@ -173,20 +237,20 @@ export const AdminDashboard: React.FC = () => {
           </Card>
         </Col>
 
-        <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
+        <Col xs={12} sm={12} lg={6}>
+          <Card bordered={false} style={{ borderRadius: 12 }} styles={{ body: { padding: '14px' } }}>
             <Statistic
-              title="Currently Checked In"
+              title={<span style={{ fontSize: 12 }}>Currently Checked In</span>}
               value={stats?.currentlyCheckedIn || 0}
               prefix={<ClockCircleOutlined style={{ color: '#1890ff' }} />}
             />
           </Card>
         </Col>
 
-        <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
+        <Col xs={12} sm={12} lg={6}>
+          <Card bordered={false} style={{ borderRadius: 12 }} styles={{ body: { padding: '14px' } }}>
             <Statistic
-              title="Absent Today"
+              title={<span style={{ fontSize: 12 }}>Absent Today</span>}
               value={stats?.absentToday || 0}
               prefix={<UserDeleteOutlined style={{ color: '#faad14' }} />}
             />
@@ -195,14 +259,15 @@ export const AdminDashboard: React.FC = () => {
       </Row>
 
       {/* Security & Failure Indicators */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+      <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
         <Col xs={24} sm={8}>
           <Card
             bordered={false}
             style={{ borderRadius: 12, borderLeft: '4px solid #ff4d4f' }}
+            styles={{ body: { padding: '14px' } }}
           >
             <Statistic
-              title="Face Verification Failures Today"
+              title={<span style={{ fontSize: 12 }}>Face Failures Today</span>}
               value={stats?.failedFaceAttempts || 0}
               prefix={<SafetyCertificateOutlined style={{ color: '#ff4d4f' }} />}
               valueStyle={{ color: stats?.failedFaceAttempts ? '#cf1322' : undefined }}
@@ -214,9 +279,10 @@ export const AdminDashboard: React.FC = () => {
           <Card
             bordered={false}
             style={{ borderRadius: 12, borderLeft: '4px solid #fa8c16' }}
+            styles={{ body: { padding: '14px' } }}
           >
             <Statistic
-              title="Geofence Boundary Violations"
+              title={<span style={{ fontSize: 12 }}>Geofence Violations</span>}
               value={stats?.failedGeofenceAttempts || 0}
               prefix={<EnvironmentOutlined style={{ color: '#fa8c16' }} />}
               valueStyle={{ color: stats?.failedGeofenceAttempts ? '#d4380d' : undefined }}
@@ -228,9 +294,10 @@ export const AdminDashboard: React.FC = () => {
           <Card
             bordered={false}
             style={{ borderRadius: 12, borderLeft: '4px solid #faad14' }}
+            styles={{ body: { padding: '14px' } }}
           >
             <Statistic
-              title="Employees Missing Face Biometrics"
+              title={<span style={{ fontSize: 12 }}>Missing Face Biometrics</span>}
               value={stats?.employeesWithoutFace || 0}
               prefix={<WarningOutlined style={{ color: '#faad14' }} />}
             />
@@ -239,34 +306,56 @@ export const AdminDashboard: React.FC = () => {
       </Row>
 
       {/* Attendance Rate Progress and Live Activity */}
-      <Row gutter={[24, 24]}>
+      <Row gutter={[16, 16]}>
         <Col xs={24} md={8}>
-          <Card title="Today's Attendance Rate" style={{ borderRadius: 12, height: '100%' }}>
-            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+          <Card
+            title="Today's Attendance Rate"
+            style={{ borderRadius: 12, height: '100%' }}
+            styles={{ body: { padding: '16px' } }}
+          >
+            <div style={{ textAlign: 'center', padding: '12px 0' }}>
               <Progress
                 type="dashboard"
                 percent={attendanceRate}
-                size={180}
+                size={isMobile ? 140 : 180}
                 strokeColor={{ '0%': '#108ee9', '100%': '#87d068' }}
               />
-              <Paragraph style={{ marginTop: 16 }}>
+              <Paragraph style={{ marginTop: 12, fontSize: 13, marginBottom: 0 }}>
                 <strong>{stats?.todayAttendance}</strong> out of{' '}
-                <strong>{stats?.activeEmployees}</strong> active staff members have verified attendance
-                today.
+                <strong>{stats?.activeEmployees}</strong> active staff members verified today.
               </Paragraph>
             </div>
           </Card>
         </Col>
 
         <Col xs={24} md={16}>
-          <Card title="Live Verified Access Feed" style={{ borderRadius: 12 }}>
-            <Table
-              dataSource={recentLiveSessions}
-              columns={columns}
-              rowKey="id"
-              pagination={false}
-              locale={{ emptyText: 'No live activity recorded yet today' }}
-            />
+          <Card
+            title="Live Verified Access Feed"
+            style={{ borderRadius: 12 }}
+            styles={{ body: { padding: isMobile ? '12px' : '16px' } }}
+          >
+            {/* Mobile feed card list */}
+            <div className="admin-feed-card-list">
+              {recentLiveSessions.length === 0 ? (
+                <Empty description="No live activity recorded yet today" style={{ padding: '20px 0' }} />
+              ) : (
+                recentLiveSessions.map((session) => (
+                  <LiveFeedCard key={session.id} session={session} />
+                ))
+              )}
+            </div>
+
+            {/* Desktop table */}
+            <div className="admin-feed-table-desktop">
+              <Table
+                dataSource={recentLiveSessions}
+                columns={columns}
+                rowKey="id"
+                pagination={false}
+                scroll={{ x: 650 }}
+                locale={{ emptyText: <Empty description="No live activity recorded yet today" /> }}
+              />
+            </div>
           </Card>
         </Col>
       </Row>

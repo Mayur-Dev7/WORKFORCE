@@ -15,6 +15,8 @@ import {
   Switch,
   InputNumber,
   Popconfirm,
+  Pagination,
+  Empty,
 } from 'antd';
 import {
   CheckOutlined,
@@ -27,6 +29,7 @@ import dayjs from 'dayjs';
 import type { LeaveRequest, LeaveType, LeaveBalance } from '@workforce/shared';
 import { PermissionKey } from '@workforce/shared';
 import { useAuth } from '../../context/AuthContext.js';
+import { useIsMobile } from '../../hooks/useMediaQuery.js';
 import {
   getAllLeaveRequests,
   reviewLeaveRequest,
@@ -49,6 +52,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export const LeaveManagementPage: React.FC = () => {
+  const isMobile = useIsMobile(768);
   const { hasPermission } = useAuth();
   const currentYear = dayjs().year();
   const canApprove = hasPermission(PermissionKey.LEAVE_APPROVE);
@@ -59,6 +63,7 @@ export const LeaveManagementPage: React.FC = () => {
   const [reqLoading, setReqLoading] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string | undefined>();
   const [filterYear, setFilterYear] = useState<number>(currentYear);
+  const [reqPage, setReqPage] = useState(1);
 
   // Review modal
   const [reviewModal, setReviewModal] = useState(false);
@@ -81,6 +86,8 @@ export const LeaveManagementPage: React.FC = () => {
   const [allocForm] = Form.useForm();
   const [allocating, setAllocating] = useState(false);
   const [initYear, setInitYear] = useState(false);
+  const [balPage, setBalPage] = useState(1);
+  const mobilePageSize = 8;
 
   const fetchRequests = async () => {
     setReqLoading(true);
@@ -345,11 +352,14 @@ export const LeaveManagementPage: React.FC = () => {
     <Select.Option key={y} value={y}>{y}</Select.Option>
   ));
 
+  const paginatedRequests = requests.slice((reqPage - 1) * mobilePageSize, reqPage * mobilePageSize);
+  const paginatedBalances = balances.slice((balPage - 1) * mobilePageSize, balPage * mobilePageSize);
+
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto' }}>
       <Card style={{ borderRadius: 12 }}>
-        <Title level={3} style={{ marginBottom: 4 }}>Leave Management</Title>
-        <Text type="secondary">Review requests, manage leave types, and allocate balances</Text>
+        <Title level={isMobile ? 4 : 3} style={{ marginBottom: 4 }}>Leave Management</Title>
+        <Text type="secondary" style={{ fontSize: 13 }}>Review requests, manage leave types, and allocate balances</Text>
 
         <div style={{ marginTop: 16 }}>
           <Tabs
@@ -360,8 +370,8 @@ export const LeaveManagementPage: React.FC = () => {
                 label: 'Leave Requests',
                 children: (
                   <>
-                    <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-                      <Select value={filterYear} onChange={setFilterYear} style={{ width: 100 }}>
+                    <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+                      <Select value={filterYear} onChange={setFilterYear} style={{ minWidth: 100, flex: isMobile ? 1 : undefined }}>
                         {yearOptions}
                       </Select>
                       <Select
@@ -369,20 +379,98 @@ export const LeaveManagementPage: React.FC = () => {
                         allowClear
                         value={filterStatus}
                         onChange={setFilterStatus}
-                        style={{ width: 160 }}
+                        style={{ minWidth: 160, flex: isMobile ? 1 : undefined }}
                       >
                         {['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'].map((s) => (
                           <Select.Option key={s} value={s}>{s}</Select.Option>
                         ))}
                       </Select>
                     </div>
-                    <Table
-                      dataSource={requests}
-                      columns={requestColumns}
-                      rowKey="id"
-                      loading={reqLoading}
-                      pagination={{ pageSize: 10 }}
-                    />
+
+                    {/* Desktop Table */}
+                    <div className="admin-leave-table-desktop">
+                      <Table
+                        dataSource={requests}
+                        columns={requestColumns}
+                        rowKey="id"
+                        loading={reqLoading}
+                        pagination={{ pageSize: 10 }}
+                        scroll={{ x: 750 }}
+                      />
+                    </div>
+
+                    {/* Mobile Card List */}
+                    <div className="admin-leave-card-list">
+                      {requests.length === 0 ? (
+                        <Empty description="No leave requests found" style={{ padding: '24px 0' }} />
+                      ) : (
+                        <>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            {paginatedRequests.map((r) => (
+                              <Card
+                                key={r.id}
+                                size="small"
+                                style={{
+                                  borderRadius: 12,
+                                  border: '1px solid #e5e7eb',
+                                  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                  <Text strong style={{ fontSize: 14 }}>{r.user_name}</Text>
+                                  <Tag color={STATUS_COLOR[r.status]} style={{ fontWeight: 600 }}>{r.status}</Tag>
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                                  <Text type="secondary" style={{ fontSize: 12 }}>{r.employee_code}</Text>
+                                  <Tag>{r.leave_type_name}</Tag>
+                                </div>
+
+                                <div style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                    <Text style={{ fontWeight: 500 }}>
+                                      {dayjs(r.start_date).format('DD MMM YYYY')} → {dayjs(r.end_date).format('DD MMM YYYY')}
+                                    </Text>
+                                    <Tag color="blue">{r.days_requested}d</Tag>
+                                  </div>
+                                  <div style={{ color: '#8c8c8c', fontSize: 11 }}>
+                                    Applied: {dayjs(r.created_at).format('DD MMM YYYY')}
+                                  </div>
+                                  {r.reason && (
+                                    <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px dashed #e5e7eb', color: '#4b5563' }}>
+                                      <Text type="secondary" style={{ fontSize: 11 }}>Reason: </Text>
+                                      {r.reason}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {canApprove && r.status === 'PENDING' && (
+                                  <Button
+                                    type="primary"
+                                    ghost
+                                    block
+                                    onClick={() => openReview(r)}
+                                    style={{ marginTop: 10, height: 38, borderRadius: 8, fontWeight: 500 }}
+                                  >
+                                    Review Request
+                                  </Button>
+                                )}
+                              </Card>
+                            ))}
+                          </div>
+
+                          <div style={{ textAlign: 'center', marginTop: 16 }}>
+                            <Pagination
+                              simple
+                              current={reqPage}
+                              pageSize={mobilePageSize}
+                              total={requests.length}
+                              onChange={setReqPage}
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </>
                 ),
               },
@@ -393,18 +481,92 @@ export const LeaveManagementPage: React.FC = () => {
                   <>
                     {canManageTypes && (
                       <div style={{ marginBottom: 16 }}>
-                        <Button type="primary" icon={<PlusOutlined />} onClick={() => openTypeModal()}>
+                        <Button
+                          type="primary"
+                          icon={<PlusOutlined />}
+                          onClick={() => openTypeModal()}
+                          block={isMobile}
+                          style={isMobile ? { height: 40 } : undefined}
+                        >
                           Add Leave Type
                         </Button>
                       </div>
                     )}
-                    <Table
-                      dataSource={leaveTypes}
-                      columns={typeColumns}
-                      rowKey="id"
-                      loading={typesLoading}
-                      pagination={false}
-                    />
+
+                    {/* Desktop Table */}
+                    <div className="leave-type-table-desktop">
+                      <Table
+                        dataSource={leaveTypes}
+                        columns={typeColumns}
+                        rowKey="id"
+                        loading={typesLoading}
+                        pagination={false}
+                        scroll={{ x: 600 }}
+                      />
+                    </div>
+
+                    {/* Mobile Card List */}
+                    <div className="leave-type-card-list">
+                      {leaveTypes.length === 0 ? (
+                        <Empty description="No leave types configured" style={{ padding: '24px 0' }} />
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          {leaveTypes.map((t) => (
+                            <Card
+                              key={t.id}
+                              size="small"
+                              style={{
+                                borderRadius: 12,
+                                border: '1px solid #e5e7eb',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                <Text strong style={{ fontSize: 15 }}>{t.name}</Text>
+                                <Tag style={{ fontWeight: 600 }}>{t.code}</Tag>
+                              </div>
+
+                              <div
+                                style={{
+                                  background: '#f9fafb',
+                                  borderRadius: 8,
+                                  padding: '8px 10px',
+                                  display: 'grid',
+                                  gridTemplateColumns: '1fr 1fr 1fr',
+                                  gap: 8,
+                                  fontSize: 12,
+                                  alignItems: 'center',
+                                }}
+                              >
+                                <div>
+                                  <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>Quota</Text>
+                                  <Text strong>{t.annual_quota}d</Text>
+                                </div>
+                                <div>
+                                  <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>Type</Text>
+                                  {t.is_paid ? <Tag color="green">Paid</Tag> : <Tag color="orange">Unpaid</Tag>}
+                                </div>
+                                <div>
+                                  <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>Status</Text>
+                                  {t.is_active ? <Tag color="green">Active</Tag> : <Tag>Inactive</Tag>}
+                                </div>
+                              </div>
+
+                              {canManageTypes && (
+                                <Button
+                                  icon={<EditOutlined />}
+                                  block
+                                  onClick={() => openTypeModal(t)}
+                                  style={{ marginTop: 10, height: 38, borderRadius: 8 }}
+                                >
+                                  Edit Leave Type
+                                </Button>
+                              )}
+                            </Card>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </>
                 ),
               },
@@ -413,13 +575,17 @@ export const LeaveManagementPage: React.FC = () => {
                 label: 'Leave Balances',
                 children: (
                   <>
-                    <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-                      <Select value={filterYear} onChange={setFilterYear} style={{ width: 100 }}>
+                    <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <Select value={filterYear} onChange={setFilterYear} style={{ minWidth: 100, flex: isMobile ? 1 : undefined }}>
                         {yearOptions}
                       </Select>
                       {canManageTypes && (
                         <>
-                          <Button icon={<PlusOutlined />} onClick={() => setAllocModal(true)}>
+                          <Button
+                            icon={<PlusOutlined />}
+                            onClick={() => setAllocModal(true)}
+                            style={isMobile ? { flex: 1, minWidth: 140, height: 36 } : undefined}
+                          >
                             Allocate Balance
                           </Button>
                           <Popconfirm
@@ -428,18 +594,102 @@ export const LeaveManagementPage: React.FC = () => {
                             okText="Initialize"
                             cancelText="Cancel"
                           >
-                            <Button loading={initYear}>Initialize Year {filterYear}</Button>
+                            <Button loading={initYear} style={isMobile ? { width: '100%', height: 36 } : undefined}>
+                              Initialize Year {filterYear}
+                            </Button>
                           </Popconfirm>
                         </>
                       )}
                     </div>
-                    <Table
-                      dataSource={balances}
-                      columns={balanceColumns}
-                      rowKey="id"
-                      loading={balLoading}
-                      pagination={{ pageSize: 15 }}
-                    />
+
+                    {/* Desktop Table */}
+                    <div className="leave-balance-table-desktop">
+                      <Table
+                        dataSource={balances}
+                        columns={balanceColumns}
+                        rowKey="id"
+                        loading={balLoading}
+                        pagination={{ pageSize: 15 }}
+                        scroll={{ x: 700 }}
+                      />
+                    </div>
+
+                    {/* Mobile Card List */}
+                    <div className="leave-balance-card-list">
+                      {balances.length === 0 ? (
+                        <Empty description="No leave balances found" style={{ padding: '24px 0' }} />
+                      ) : (
+                        <>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            {paginatedBalances.map((b) => {
+                              const rem = b.remaining_days ?? (b.allocated_days - b.used_days - b.pending_days);
+                              return (
+                                <Card
+                                  key={b.id}
+                                  size="small"
+                                  style={{
+                                    borderRadius: 12,
+                                    border: '1px solid #e5e7eb',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                    <Tag style={{ fontSize: 13, fontWeight: 600 }}>{b.leave_type_name || b.leave_type_id}</Tag>
+                                    <Tag color={rem > 0 ? 'green' : 'red'} style={{ fontWeight: 600 }}>
+                                      {rem}d remaining
+                                    </Tag>
+                                  </div>
+
+                                  <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 8, wordBreak: 'break-all' }}>
+                                    User ID: {b.user_id}
+                                  </div>
+
+                                  <div
+                                    style={{
+                                      background: '#f9fafb',
+                                      borderRadius: 8,
+                                      padding: '8px 10px',
+                                      display: 'grid',
+                                      gridTemplateColumns: 'repeat(4, 1fr)',
+                                      gap: 6,
+                                      fontSize: 12,
+                                      textAlign: 'center',
+                                    }}
+                                  >
+                                    <div>
+                                      <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>Year</Text>
+                                      <Text strong style={{ fontSize: 12 }}>{b.leave_year}</Text>
+                                    </div>
+                                    <div>
+                                      <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>Allocated</Text>
+                                      <Text strong style={{ fontSize: 12 }}>{b.allocated_days}d</Text>
+                                    </div>
+                                    <div>
+                                      <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>Used</Text>
+                                      <Tag color="red" style={{ margin: 0 }}>{b.used_days}d</Tag>
+                                    </div>
+                                    <div>
+                                      <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>Pending</Text>
+                                      <Tag color="orange" style={{ margin: 0 }}>{b.pending_days}d</Tag>
+                                    </div>
+                                  </div>
+                                </Card>
+                              );
+                            })}
+                          </div>
+
+                          <div style={{ textAlign: 'center', marginTop: 16 }}>
+                            <Pagination
+                              simple
+                              current={balPage}
+                              pageSize={mobilePageSize}
+                              total={balances.length}
+                              onChange={setBalPage}
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </>
                 ),
               },
@@ -455,6 +705,8 @@ export const LeaveManagementPage: React.FC = () => {
         onCancel={() => setReviewModal(false)}
         footer={null}
         destroyOnClose
+        width={isMobile ? '92vw' : 520}
+        centered
       >
         {reviewTarget && (
           <div style={{ marginBottom: 16 }}>
@@ -506,6 +758,8 @@ export const LeaveManagementPage: React.FC = () => {
         onCancel={() => setTypeModal(false)}
         footer={null}
         destroyOnClose
+        width={isMobile ? '92vw' : 520}
+        centered
       >
         <Form form={typeForm} layout="vertical" onFinish={handleSaveType}>
           {!editingType && (
@@ -545,6 +799,8 @@ export const LeaveManagementPage: React.FC = () => {
         onCancel={() => { setAllocModal(false); allocForm.resetFields(); }}
         footer={null}
         destroyOnClose
+        width={isMobile ? '92vw' : 520}
+        centered
       >
         <Form form={allocForm} layout="vertical" onFinish={handleAllocate}>
           <Form.Item name="user_id" label="User ID" rules={[{ required: true }]}>
