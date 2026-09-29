@@ -22,6 +22,7 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext.js';
+import { useLocationWarmup, VerificationResult } from '../../context/LocationContext.js';
 import { api } from '../../services/api.js';
 import { analyzeVideoFrame, evaluateFaceMatch } from '../../services/face.client.js';
 import { Office, ApiResponse, AttendanceSession } from '@workforce/shared';
@@ -30,6 +31,7 @@ const { Title, Text, Paragraph } = Typography;
 
 export const CheckInPage: React.FC = () => {
   const { user, refreshUser } = useAuth();
+  const { cachedOffice, cachedFaceTemplate, getFastVerifiedLocation } = useLocationWarmup();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -49,51 +51,78 @@ export const CheckInPage: React.FC = () => {
   const [livenessScore, setLivenessScore] = useState(0);
   const [lastEmbedding, setLastEmbedding] = useState<number[]>([]);
 
-  // Geolocation states
+  // Geolocation & Fast Verification states
   const [userCoords, setUserCoords] = useState<{ lat: number; lon: number; accuracy: number } | null>(null);
-  const [office, setOffice] = useState<Office | null>(null);
+  const [office, setOffice] = useState<Office | null>(cachedOffice || null);
   const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
   const [insideGeofence, setInsideGeofence] = useState<boolean | null>(null);
+  const [locationChecking, setLocationChecking] = useState(true);
+  const [locationVerification, setLocationVerification] = useState<VerificationResult | null>(null);
 
-  // Reference face template
-  const [referenceImage, setReferenceImage] = useState<string | null>(null);
-  const [referenceEmbedding, setReferenceEmbedding] = useState<number[] | null>(null);
+  // Reference face template (pre-loaded from cache when available)
+  const [referenceImage, setReferenceImage] = useState<string | null>(cachedFaceTemplate?.referenceImage || null);
+  const [referenceEmbedding, setReferenceEmbedding] = useState<number[] | null>(cachedFaceTemplate?.embedding || null);
 
   // Request & Submission state
   const [submitting, setSubmitting] = useState(false);
   const [resultError, setResultError] = useState<{ title: string; message: string } | null>(null);
   const [livenessInstruction, setLivenessInstruction] = useState('Position face inside oval');
 
-  // Load office details, reference face & start camera
+  // Verify location using warmed background snapshot & fast fresh GPS check
+  const verifyLocation = useCallback(async (forceFresh = false) => {
+    setLocationChecking(true);
+    try {
+      const result = await getFastVerifiedLocation(forceFresh);
+      setLocationVerification(result);
+      setUserCoords(result.coords);
+      setDistanceMeters(result.distanceMeters);
+      setInsideGeofence(result.insideGeofence);
+      if (result.office) setOffice(result.office);
+    } catch (err: any) {
+      setResultError({
+        title: 'Location Verification Failed',
+        message: err.message || 'Could not verify GPS coordinates against office geofence.',
+      });
+      setInsideGeofence(false);
+    } finally {
+      setLocationChecking(false);
+    }
+  }, [getFastVerifiedLocation]);
+
+  // Load office details, reference face & start camera and location check in parallel
   useEffect(() => {
     let active = true;
 
     async function init() {
-      // 1. Fetch assigned office & reference face
-      if (user?.office_id) {
-        try {
-          const res = await api.get<ApiResponse<Office>>(`/offices/${user.office_id}`);
-          if (active) setOffice(res.data.data);
-        } catch (e) {
-          console.error(e);
-        }
+      // 1. Fetch office if not already in cache
+      if (user?.office_id && !cachedOffice) {
+        api.get<ApiResponse<Office>>(`/offices/${user.office_id}`)
+          .then((res) => {
+            if (active && res.data?.data) setOffice(res.data.data);
+          })
+          .catch(console.error);
       }
 
-      try {
-        const faceRes = await api.get('/users/self/face-template');
-        if (active && faceRes.data?.data) {
-          if (faceRes.data.data.referenceImage) {
-            setReferenceImage(faceRes.data.data.referenceImage);
-          }
-          if (faceRes.data.data.embedding && Array.isArray(faceRes.data.data.embedding)) {
-            setReferenceEmbedding(faceRes.data.data.embedding);
-          }
-        }
-      } catch (e) {
-        console.warn('Could not fetch reference face', e);
+      // 2. Fetch reference face template if not already in cache
+      if (!cachedFaceTemplate) {
+        api.get('/users/self/face-template')
+          .then((faceRes) => {
+            if (active && faceRes.data?.data) {
+              if (faceRes.data.data.referenceImage) {
+                setReferenceImage(faceRes.data.data.referenceImage);
+              }
+              if (faceRes.data.data.embedding && Array.isArray(faceRes.data.data.embedding)) {
+                setReferenceEmbedding(faceRes.data.data.embedding);
+              }
+            }
+          })
+          .catch((e) => console.warn('Could not fetch reference face', e));
       }
 
-      // 2. Start webcam
+      // 3. Fast location verification in parallel (instant match against open-app snapshot)
+      verifyLocation(false);
+
+      // 4. Start webcam in parallel
       try {
         const userMedia = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
@@ -114,28 +143,6 @@ export const CheckInPage: React.FC = () => {
           });
         }
       }
-
-      // 3. Obtain precise GPS coordinates
-      if ('geolocation' in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            if (!active) return;
-            setUserCoords({
-              lat: pos.coords.latitude,
-              lon: pos.coords.longitude,
-              accuracy: pos.coords.accuracy,
-            });
-          },
-          (err) => {
-            if (!active) return;
-            setResultError({
-              title: 'GPS Location Unavailable',
-              message: `Could not retrieve accurate GPS coordinates: ${err.message}`,
-            });
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
-      }
     }
 
     init();
@@ -146,23 +153,7 @@ export const CheckInPage: React.FC = () => {
         stream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [user?.office_id]);
-
-  // Calculate geofence distance on coordinates change
-  useEffect(() => {
-    if (userCoords && office) {
-      const R = 6371e3;
-      const toRad = (x: number) => (x * Math.PI) / 180;
-      const dLat = toRad(office.latitude - userCoords.lat);
-      const dLon = toRad(office.longitude - userCoords.lon);
-      const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(userCoords.lat)) * Math.cos(toRad(office.latitude)) * Math.sin(dLon / 2) ** 2;
-      const dist = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-      setDistanceMeters(dist);
-      setInsideGeofence(dist <= office.radius_meters);
-    }
-  }, [userCoords, office]);
+  }, [user?.office_id, cachedOffice, cachedFaceTemplate, verifyLocation]);
 
   // Video frame biometric processing loop
   useEffect(() => {
@@ -506,27 +497,61 @@ export const CheckInPage: React.FC = () => {
                     <Text strong>GPS Accuracy</Text>
                     <br />
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      {userCoords ? `+/- ${Math.round(userCoords.accuracy)}m (Max 100m)` : 'Acquiring GPS fix...'}
+                      {userCoords
+                        ? `+/- ${Math.round(userCoords.accuracy)}m (Max 100m)`
+                        : locationChecking
+                        ? 'Acquiring GPS fix...'
+                        : 'GPS unavailable'}
                     </Text>
                   </div>
                 </div>
 
                 {/* 7. Office Geofence */}
-                <div className="status-step-item">
+                <div className="status-step-item" style={{ alignItems: 'flex-start' }}>
                   {insideGeofence === true ? (
-                    <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
+                    <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18, marginTop: 2 }} />
                   ) : (
-                    <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18 }} />
+                    <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18, marginTop: 2 }} />
                   )}
-                  <div>
-                    <Text strong>Office Geofence</Text>
-                    <br />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
+                      <Text strong>Office Geofence</Text>
+                      {locationVerification?.matchType === 'instant_match' && (
+                        <Tag color="success" style={{ margin: 0, fontSize: 11, borderRadius: 10 }}>
+                          ⚡ Instant Match ({locationVerification.latencyMs}ms)
+                        </Tag>
+                      )}
+                      {locationVerification?.matchType === 'fresh_geofence_match' && (
+                        <Tag color="processing" style={{ margin: 0, fontSize: 11, borderRadius: 10 }}>
+                          📍 Live GPS ({locationVerification.latencyMs}ms)
+                        </Tag>
+                      )}
+                      {locationVerification?.matchType === 'outside_geofence' && (
+                        <Tag color="error" style={{ margin: 0, fontSize: 11, borderRadius: 10 }}>
+                          Outside Geofence
+                        </Tag>
+                      )}
+                    </div>
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      {distanceMeters !== null && office
-                        ? `${distanceMeters}m from office (Max: ${office.radius_meters}m)`
-                        : 'Calculating distance...'}
+                      {locationChecking
+                        ? 'Verifying office location...'
+                        : distanceMeters !== null && office
+                        ? locationVerification?.matchType === 'instant_match'
+                          ? `Inside office (${distanceMeters}m from center, matched with app launch)`
+                          : insideGeofence
+                          ? `Inside office (${distanceMeters}m from center, Max ${office.radius_meters}m)`
+                          : `${distanceMeters}m from office (Allowed: ${office.radius_meters}m)`
+                        : 'Awaiting location check'}
                     </Text>
                   </div>
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<ReloadOutlined spin={locationChecking} />}
+                    onClick={() => verifyLocation(true)}
+                    title="Force refresh GPS"
+                    style={{ color: '#1677ff', padding: '0 4px' }}
+                  />
                 </div>
               </div>
 

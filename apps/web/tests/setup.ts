@@ -46,5 +46,16 @@ Object.defineProperty(navigator, 'geolocation', {
         },
       });
     }),
+    watchPosition: vi.fn().mockImplementation((success) => {
+      success({
+        coords: {
+          latitude: 37.774929,
+          longitude: -122.419416,
+          accuracy: 15,
+        },
+      });
+      return 1;
+    }),
+    clearWatch: vi.fn(),
   },
 });

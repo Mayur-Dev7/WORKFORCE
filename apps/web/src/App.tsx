@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import { AuthProvider } from './context/AuthContext.js';
+import { LocationProvider } from './context/LocationContext.js';
 import { AppRoutes } from './routes/AppRoutes.js';
 import './styles/app.css';
 
@@ -17,9 +18,11 @@ export const App: React.FC = () => {
       }}
     >
       <AuthProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
+        <LocationProvider>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </LocationProvider>
       </AuthProvider>
     </ConfigProvider>
   );

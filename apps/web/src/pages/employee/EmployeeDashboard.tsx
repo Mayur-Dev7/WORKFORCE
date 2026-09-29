@@ -25,6 +25,7 @@ import {
   WarningOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext.js';
+import { useLocationWarmup } from '../../context/LocationContext.js';
 import { api } from '../../services/api.js';
 import { AttendanceSession, Office, ApiResponse } from '@workforce/shared';
 import dayjs from 'dayjs';
@@ -33,14 +34,27 @@ const { Title, Text } = Typography;
 
 export const EmployeeDashboard: React.FC = () => {
   const { user } = useAuth();
+  const { cachedOffice, initialSnapshot } = useLocationWarmup();
   const navigate = useNavigate();
 
   const [activeSession, setActiveSession] = useState<AttendanceSession | null>(null);
   const [history, setHistory] = useState<AttendanceSession[]>([]);
-  const [office, setOffice] = useState<Office | null>(null);
-  const [userDistance, setUserDistance] = useState<number | null>(null);
+  const [office, setOffice] = useState<Office | null>(cachedOffice || null);
+  const [userDistance, setUserDistance] = useState<number | null>(initialSnapshot?.distanceMeters ?? null);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (cachedOffice && !office) {
+      setOffice(cachedOffice);
+    }
+  }, [cachedOffice, office]);
+
+  useEffect(() => {
+    if (initialSnapshot?.distanceMeters !== undefined && initialSnapshot?.distanceMeters !== null && userDistance === null) {
+      setUserDistance(initialSnapshot.distanceMeters);
+    }
+  }, [initialSnapshot, userDistance]);
 
   // Haversine on client for UI convenience
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
