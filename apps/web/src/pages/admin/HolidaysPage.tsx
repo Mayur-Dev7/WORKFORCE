@@ -24,6 +24,7 @@ import {
   EditOutlined,
   DeleteOutlined,
   CalendarOutlined,
+  CheckOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -39,16 +40,114 @@ import {
   getWeeklyHolidayRules,
   batchUpsertWeeklyRules,
 } from '../../services/holidays.api.js';
+import { useIsMobile } from '../../hooks/useMediaQuery.js';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+/** Mobile card representing a single Holiday */
+const HolidayCard: React.FC<{
+  holiday: Holiday;
+  canManage: boolean;
+  deletingId: string | null;
+  onEdit: (h: Holiday) => void;
+  onDelete: (id: string) => void;
+}> = ({ holiday, canManage, deletingId, onEdit, onDelete }) => (
+  <Card
+    size="small"
+    style={{
+      marginBottom: 12,
+      borderRadius: 12,
+      border: '1px solid #e5e7eb',
+      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+    }}
+    styles={{ body: { padding: '14px 14px' } }}
+  >
+    {/* Top Row: Date & Status */}
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <CalendarOutlined style={{ color: '#1677ff', fontSize: 14 }} />
+        <Text strong style={{ fontSize: 14 }}>
+          {dayjs(holiday.holiday_date).format('DD MMM YYYY')}
+        </Text>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          ({dayjs(holiday.holiday_date).format('dddd')})
+        </Text>
+      </div>
+
+      <Tag color={holiday.is_active ? 'green' : 'default'} style={{ margin: 0 }}>
+        {holiday.is_active ? 'Active' : 'Inactive'}
+      </Tag>
+    </div>
+
+    {/* Holiday Name & Description */}
+    <div style={{ margin: '6px 0 10px' }}>
+      <Text strong style={{ fontSize: 15, color: '#111827' }}>
+        {holiday.name}
+      </Text>
+      {holiday.description && (
+        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+          {holiday.description}
+        </div>
+      )}
+    </div>
+
+    {/* Scope & Recurring Badges */}
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: canManage ? 10 : 0 }}>
+      {holiday.office_id ? (
+        <Tag color="blue" style={{ margin: 0, fontSize: 11 }}>Office-specific</Tag>
+      ) : (
+        <Tag color="cyan" style={{ margin: 0, fontSize: 11 }}>Company-wide</Tag>
+      )}
+
+      {holiday.is_recurring ? (
+        <Tag color="purple" style={{ margin: 0, fontSize: 11 }}>Yearly Recurring</Tag>
+      ) : (
+        <Tag style={{ margin: 0, fontSize: 11 }}>One-time</Tag>
+      )}
+    </div>
+
+    {/* Actions */}
+    {canManage && (
+      <div style={{ display: 'flex', gap: 8, paddingTop: 10, borderTop: '1px solid #f3f4f6' }}>
+        <Button
+          size="middle"
+          icon={<EditOutlined />}
+          onClick={() => onEdit(holiday)}
+          style={{ flex: 1, borderRadius: 8 }}
+        >
+          Edit
+        </Button>
+
+        <Popconfirm
+          title="Delete this holiday?"
+          onConfirm={() => onDelete(holiday.id)}
+          okText="Delete"
+          okButtonProps={{ danger: true }}
+          cancelText="Cancel"
+        >
+          <Button
+            size="middle"
+            danger
+            icon={<DeleteOutlined />}
+            loading={deletingId === holiday.id}
+            style={{ flex: 1, borderRadius: 8 }}
+          >
+            Delete
+          </Button>
+        </Popconfirm>
+      </div>
+    )}
+  </Card>
+);
+
 export const HolidaysPage: React.FC = () => {
   const { hasPermission } = useAuth();
   const currentYear = dayjs().year();
   const canManage = hasPermission(PermissionKey.HOLIDAY_MANAGE);
+  const isMobile = useIsMobile(768);
 
   // ─── Holidays ─────────────────────────────────────────────────────────────
   const [holidays, setHolidays] = useState<Holiday[]>([]);
@@ -64,7 +163,6 @@ export const HolidaysPage: React.FC = () => {
   // ─── Weekly Rules ─────────────────────────────────────────────────────────
   const [weeklyRules, setWeeklyRules] = useState<WeeklyHolidayRule[]>([]);
   const [rulesLoading, setRulesLoading] = useState(false);
-  // Local edit state: { day_of_week: 0-6 } → is_active
   const [activeDays, setActiveDays] = useState<Set<number>>(new Set());
   const [savingRules, setSavingRules] = useState(false);
 
@@ -169,7 +267,19 @@ export const HolidaysPage: React.FC = () => {
     }
   };
 
-  // ─── Weekly Rules Save ────────────────────────────────────────────────────
+  // ─── Weekly Rules ─────────────────────────────────────────────────────────
+  const toggleDay = (dayIndex: number) => {
+    setActiveDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(dayIndex)) {
+        next.delete(dayIndex);
+      } else {
+        next.add(dayIndex);
+      }
+      return next;
+    });
+  };
+
   const handleSaveWeeklyRules = async () => {
     setSavingRules(true);
     try {
@@ -179,7 +289,7 @@ export const HolidaysPage: React.FC = () => {
         is_active: activeDays.has(i),
       }));
       await batchUpsertWeeklyRules(rules);
-      message.success('Weekly holiday rules saved');
+      message.success('Weekly off days updated');
       fetchWeeklyRules();
     } catch (err: any) {
       message.error(err.response?.data?.error?.message || 'Failed to save weekly rules');
@@ -188,16 +298,7 @@ export const HolidaysPage: React.FC = () => {
     }
   };
 
-  const toggleDay = (day: number) => {
-    setActiveDays((prev) => {
-      const next = new Set(prev);
-      if (next.has(day)) next.delete(day);
-      else next.add(day);
-      return next;
-    });
-  };
-
-  // ─── Columns ──────────────────────────────────────────────────────────────
+  // ─── Desktop Columns ───────────────────────────────────────────────────────
   const holidayColumns: ColumnsType<Holiday> = [
     {
       title: 'Date',
@@ -232,12 +333,12 @@ export const HolidaysPage: React.FC = () => {
     {
       title: 'Recurring',
       dataIndex: 'is_recurring',
-      render: (v: boolean) => v ? <Tag color="purple">Yearly</Tag> : <Tag>One-time</Tag>,
+      render: (v: boolean) => (v ? <Tag color="purple">Yearly</Tag> : <Tag>One-time</Tag>),
     },
     {
       title: 'Status',
       dataIndex: 'is_active',
-      render: (v: boolean) => v ? <Tag color="green">Active</Tag> : <Tag>Inactive</Tag>,
+      render: (v: boolean) => (v ? <Tag color="green">Active</Tag> : <Tag>Inactive</Tag>),
     },
     ...(canManage
       ? [
@@ -273,117 +374,170 @@ export const HolidaysPage: React.FC = () => {
   ];
 
   return (
-    <div style={{ maxWidth: 1280, margin: '0 auto' }}>
-      <Card style={{ borderRadius: 12 }}>
-        <Title level={3} style={{ marginBottom: 4 }}>
-          <CalendarOutlined style={{ marginRight: 8 }} />
+    <div style={{ maxWidth: 1280, margin: '0 auto', paddingBottom: 24 }}>
+      {/* ── Page Header ── */}
+      <div style={{ marginBottom: 16 }}>
+        <Title level={4} style={{ margin: 0, fontSize: isMobile ? 18 : 22 }}>
+          <CalendarOutlined style={{ marginRight: 8, color: '#1677ff' }} />
           Holiday Calendar
         </Title>
-        <Text type="secondary">Manage company holidays and weekly off days</Text>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          Manage official company holidays and weekly off days
+        </Text>
+      </div>
 
-        <div style={{ marginTop: 16 }}>
-          <Tabs
-            defaultActiveKey="holidays"
-            items={[
-              {
-                key: 'holidays',
-                label: 'Public Holidays',
-                children: (
-                  <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
-                      <Space>
-                        <DatePicker
-                          picker="year"
-                          value={dayjs().year(filterYear)}
-                          onChange={(d) => d && setFilterYear(d.year())}
-                          allowClear={false}
-                        />
-                        <Text type="secondary">{holidays.length} holiday{holidays.length !== 1 ? 's' : ''} in {filterYear}</Text>
-                      </Space>
-                      {canManage && (
-                        <Button type="primary" icon={<PlusOutlined />} onClick={() => openHolidayModal()}>
-                          Add Holiday
-                        </Button>
-                      )}
+      <Card style={{ borderRadius: 12 }} styles={{ body: { padding: isMobile ? '12px 14px' : '16px 20px' } }}>
+        <Tabs
+          defaultActiveKey="holidays"
+          items={[
+            {
+              key: 'holidays',
+              label: 'Public Holidays',
+              children: (
+                <>
+                  {/* Filter & Action Controls */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: 16,
+                      flexWrap: 'wrap',
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <DatePicker
+                        picker="year"
+                        value={dayjs().year(filterYear)}
+                        onChange={(d) => d && setFilterYear(d.year())}
+                        allowClear={false}
+                        size={isMobile ? 'middle' : 'middle'}
+                        style={{ width: 110 }}
+                      />
+                      <Text type="secondary" style={{ fontSize: 13 }}>
+                        {holidays.length} holiday{holidays.length !== 1 ? 's' : ''} in {filterYear}
+                      </Text>
                     </div>
 
+                    {canManage && (
+                      <Button
+                        type="primary"
+                        icon={<PlusOutlined />}
+                        onClick={() => openHolidayModal()}
+                        size="middle"
+                        style={{ borderRadius: 8, width: isMobile ? '100%' : 'auto' }}
+                      >
+                        Add Holiday
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* ── Mobile View: Holiday Cards ── */}
+                  <div className="holiday-card-list">
+                    {holidays.length === 0 && !loading ? (
+                      <Empty description={`No holidays found for ${filterYear}`} style={{ padding: '24px 0' }} />
+                    ) : (
+                      holidays.map((h) => (
+                        <HolidayCard
+                          key={h.id}
+                          holiday={h}
+                          canManage={canManage}
+                          deletingId={deletingId}
+                          onEdit={openHolidayModal}
+                          onDelete={handleDeleteHoliday}
+                        />
+                      ))
+                    )}
+                  </div>
+
+                  {/* ── Desktop View: Full Table ── */}
+                  <div className="holiday-table-desktop">
                     <Table
                       dataSource={holidays}
                       columns={holidayColumns}
                       rowKey="id"
                       loading={loading}
+                      scroll={{ x: 750 }}
                       pagination={{ pageSize: 15 }}
                       locale={{ emptyText: <Empty description={`No holidays found for ${filterYear}`} /> }}
                     />
-                  </>
-                ),
-              },
-              {
-                key: 'weekly',
-                label: 'Weekly Off Days',
-                children: (
-                  <div>
-                    <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-                      Configure which days of the week are non-working days for the company.
-                    </Text>
+                  </div>
+                </>
+              ),
+            },
+            {
+              key: 'weekly',
+              label: 'Weekly Off Days',
+              children: (
+                <div>
+                  <Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 13 }}>
+                    Configure which days of the week are non-working days for the company.
+                  </Text>
 
-                    {rulesLoading ? (
-                      <Text>Loading...</Text>
-                    ) : (
-                      <Row gutter={[12, 12]} style={{ marginBottom: 24 }}>
-                        {DAY_NAMES.map((name, idx) => (
-                          <Col key={idx} xs={12} sm={8} md={6} lg={4}>
-                            <Card
-                              size="small"
-                              style={{
-                                borderRadius: 8,
-                                border: activeDays.has(idx) ? '2px solid #1677ff' : undefined,
-                                background: activeDays.has(idx) ? '#e6f4ff' : undefined,
-                                textAlign: 'center',
-                                cursor: canManage ? 'pointer' : 'default',
-                              }}
-                              onClick={() => canManage && toggleDay(idx)}
+                  {rulesLoading ? (
+                    <Text>Loading weekly schedule...</Text>
+                  ) : (
+                    <Row gutter={[10, 10]} style={{ marginBottom: 20 }}>
+                      {DAY_NAMES.map((name, idx) => (
+                        <Col key={idx} xs={12} sm={8} md={6} lg={4}>
+                          <Card
+                            size="small"
+                            style={{
+                              borderRadius: 10,
+                              border: activeDays.has(idx) ? '2px solid #1677ff' : '1px solid #e5e7eb',
+                              background: activeDays.has(idx) ? '#eff6ff' : '#ffffff',
+                              textAlign: 'center',
+                              cursor: canManage ? 'pointer' : 'default',
+                              transition: 'all 0.15s ease',
+                              padding: '4px 0',
+                            }}
+                            onClick={() => canManage && toggleDay(idx)}
+                          >
+                            <Checkbox
+                              checked={activeDays.has(idx)}
+                              onChange={() => canManage && toggleDay(idx)}
+                              disabled={!canManage}
+                              style={{ width: '100%', justifyContent: 'center' }}
                             >
-                              <Checkbox
-                                checked={activeDays.has(idx)}
-                                onChange={() => canManage && toggleDay(idx)}
-                                disabled={!canManage}
-                              >
-                                <Text strong>{name}</Text>
-                              </Checkbox>
-                            </Card>
-                          </Col>
-                        ))}
-                      </Row>
-                    )}
+                              <Text strong style={{ fontSize: 14 }}>{name}</Text>
+                            </Checkbox>
+                          </Card>
+                        </Col>
+                      ))}
+                    </Row>
+                  )}
 
-                    {canManage && (
-                      <Button
-                        type="primary"
-                        loading={savingRules}
-                        onClick={handleSaveWeeklyRules}
-                      >
-                        Save Weekly Rules
-                      </Button>
-                    )}
+                  {canManage && (
+                    <Button
+                      type="primary"
+                      size="large"
+                      loading={savingRules}
+                      onClick={handleSaveWeeklyRules}
+                      style={{ borderRadius: 8, width: isMobile ? '100%' : 'auto' }}
+                    >
+                      Save Weekly Rules
+                    </Button>
+                  )}
 
-                    {weeklyRules.length > 0 && (
-                      <div style={{ marginTop: 16 }}>
-                        <Text type="secondary">
-                          Current off days:{' '}
+                  {weeklyRules.length > 0 && (
+                    <div style={{ marginTop: 16 }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        Current non-working days:{' '}
+                        <strong>
                           {weeklyRules
                             .filter((r) => r.is_active)
                             .map((r) => DAY_NAMES[r.day_of_week])
                             .join(', ') || 'None'}
-                        </Text>
-                      </div>
-                    )}
-                  </div>
-                ),
-              },
-            ]}
-          />
-        </div>
+                        </strong>
+                      </Text>
+                    </div>
+                  )}
+                </div>
+              ),
+            },
+          ]}
+        />
       </Card>
 
       {/* Holiday Add/Edit Modal */}
@@ -397,15 +551,18 @@ export const HolidaysPage: React.FC = () => {
         }}
         footer={null}
         destroyOnClose
+        centered
+        width={isMobile ? '92vw' : 480}
       >
         <Form form={holidayForm} layout="vertical" onFinish={handleSaveHoliday}>
-          <Form.Item name="name" label="Holiday Name" rules={[{ required: true }]}>
-            <Input placeholder="e.g. Republic Day" />
+          <Form.Item name="name" label="Holiday Name" rules={[{ required: true, message: 'Holiday name is required' }]}>
+            <Input placeholder="e.g. Republic Day" size="large" />
           </Form.Item>
 
           <Form.Item label="Date" required>
             <DatePicker
               style={{ width: '100%' }}
+              size="large"
               value={holidayDate}
               onChange={(d) => setHolidayDate(d)}
               format="DD MMM YYYY"
@@ -413,7 +570,7 @@ export const HolidaysPage: React.FC = () => {
           </Form.Item>
 
           <Form.Item name="description" label="Description">
-            <TextArea rows={2} placeholder="Optional description" />
+            <TextArea rows={2} placeholder="Optional holiday notes" size="large" />
           </Form.Item>
 
           <Form.Item name="is_recurring" label="Recurring Yearly" valuePropName="checked" initialValue={false}>
@@ -426,13 +583,23 @@ export const HolidaysPage: React.FC = () => {
             </Form.Item>
           )}
 
-          <div style={{ textAlign: 'right' }}>
-            <Space>
-              <Button onClick={() => setHolidayModal(false)}>Cancel</Button>
-              <Button type="primary" htmlType="submit" loading={savingHoliday}>
-                {editingHoliday ? 'Save Changes' : 'Add Holiday'}
-              </Button>
-            </Space>
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <Button
+              onClick={() => setHolidayModal(false)}
+              size="large"
+              style={{ flex: 1, borderRadius: 8 }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={savingHoliday}
+              size="large"
+              style={{ flex: 1.5, borderRadius: 8 }}
+            >
+              {editingHoliday ? 'Save Changes' : 'Add Holiday'}
+            </Button>
           </div>
         </Form>
       </Modal>

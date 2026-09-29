@@ -259,17 +259,31 @@ html, body {
   }
 }
 
-/* ─── Leave & Attendance Pages — card list vs table toggle ────── */
+/* ─── Responsive Card List vs Desktop Table Toggles ────── */
 .leave-card-list,
-.attendance-card-list { display: block; }
+.attendance-card-list,
+.employee-card-list,
+.office-card-list,
+.holiday-card-list { display: block; }
+
 .leave-table-desktop,
-.attendance-table-desktop { display: none; }
+.attendance-table-desktop,
+.employee-table-desktop,
+.office-table-desktop,
+.holiday-table-desktop { display: none; }
 
 @media (min-width: 768px) {
   .leave-card-list,
-  .attendance-card-list { display: none; }
+  .attendance-card-list,
+  .employee-card-list,
+  .office-card-list,
+  .holiday-card-list { display: none; }
+
   .leave-table-desktop,
-  .attendance-table-desktop { display: block; }
+  .attendance-table-desktop,
+  .employee-table-desktop,
+  .office-table-desktop,
+  .holiday-table-desktop { display: block; }
 }
 
 .leave-apply-drawer .ant-drawer-content-wrapper {

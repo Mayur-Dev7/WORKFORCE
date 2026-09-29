@@ -17,6 +17,7 @@ import {
   Divider,
   Row,
   Col,
+  Empty,
 } from 'antd';
 import {
   EnvironmentOutlined,
@@ -31,10 +32,163 @@ import { api } from '../../services/api.js';
 import { Office, ApiResponse, PermissionKey } from '@workforce/shared';
 import { PermissionGate } from '../../components/common/PermissionGate.js';
 import { MapPicker } from '../../components/common/MapPicker.js';
+import { useIsMobile } from '../../hooks/useMediaQuery.js';
 
 const { Title, Text, Paragraph } = Typography;
 
+/** Mobile Card representation for an Office Geofence */
+const OfficeCard: React.FC<{
+  office: Office;
+  totalEmployeesInCompany: number;
+  onEdit: (office: Office) => void;
+  onApplyToAll: (id: string, name: string) => void;
+  onDelete: (id: string, name: string) => void;
+}> = ({ office, totalEmployeesInCompany, onEdit, onApplyToAll, onDelete }) => {
+  const hasEmployees = Boolean(office.employee_count && office.employee_count > 0);
+
+  return (
+    <Card
+      size="small"
+      style={{
+        marginBottom: 12,
+        borderRadius: 12,
+        border: '1px solid #e5e7eb',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+      }}
+      styles={{ body: { padding: '14px 14px' } }}
+    >
+      {/* Top Row: Office Name + Status */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+        <div>
+          <Text strong style={{ fontSize: 16 }}>{office.name}</Text>
+          {office.address && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+              <EnvironmentOutlined style={{ color: '#8c8c8c', fontSize: 12 }} />
+              <Text type="secondary" style={{ fontSize: 12 }}>{office.address}</Text>
+            </div>
+          )}
+        </div>
+
+        <Tag color={office.is_active ? 'success' : 'error'} style={{ margin: 0 }}>
+          {office.is_active ? 'Active' : 'Disabled'}
+        </Tag>
+      </div>
+
+      {/* Geofence specs grid */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, 1fr)',
+          gap: 8,
+          background: '#f9fafb',
+          borderRadius: 8,
+          padding: '10px 12px',
+          margin: '10px 0',
+        }}
+      >
+        <div>
+          <Text type="secondary" style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.5px' }}>
+            COORDINATES
+          </Text>
+          <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#1f2937', marginTop: 2 }}>
+            {office.latitude.toFixed(5)}, {office.longitude.toFixed(5)}
+          </div>
+        </div>
+
+        <div>
+          <Text type="secondary" style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.5px' }}>
+            RADIUS BOUNDARY
+          </Text>
+          <div style={{ marginTop: 2 }}>
+            <Tag color="blue" style={{ margin: 0, fontSize: 11 }}>
+              {office.radius_meters}m radius
+            </Tag>
+          </div>
+        </div>
+
+        <div style={{ gridColumn: 'span 2' }}>
+          <Text type="secondary" style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.5px' }}>
+            GOVERNED EMPLOYEES
+          </Text>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+            <Tag color={hasEmployees ? 'purple' : 'default'} icon={<TeamOutlined />} style={{ margin: 0 }}>
+              {office.employee_count || 0} employees
+            </Tag>
+            {totalEmployeesInCompany > 0 && office.employee_count === totalEmployeesInCompany && (
+              <Tag color="green" style={{ margin: 0 }}>100% of Company</Tag>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <PermissionGate permission={PermissionKey.OFFICE_UPDATE}>
+            <Button
+              size="middle"
+              icon={<EditOutlined />}
+              onClick={() => onEdit(office)}
+              style={{ flex: 1, borderRadius: 8 }}
+            >
+              Edit on Map
+            </Button>
+          </PermissionGate>
+
+          <PermissionGate permission={PermissionKey.OFFICE_UPDATE}>
+            <Popconfirm
+              title="Apply to ALL Company Employees?"
+              description={`Every employee in your company will be assigned to "${office.name}". Check-in will be validated against this geofence.`}
+              onConfirm={() => onApplyToAll(office.id, office.name)}
+              okText="Yes, Apply to All"
+              cancelText="Cancel"
+            >
+              <Button
+                size="middle"
+                type="primary"
+                ghost
+                icon={<TeamOutlined />}
+                style={{ flex: 1.2, borderRadius: 8 }}
+              >
+                Apply to All Staff
+              </Button>
+            </Popconfirm>
+          </PermissionGate>
+        </div>
+
+        <PermissionGate permission={PermissionKey.OFFICE_DISABLE}>
+          <Popconfirm
+            title={`Delete "${office.name}"?`}
+            description={
+              hasEmployees
+                ? `Cannot delete: ${office.employee_count} employee(s) are assigned to this office. Reassign them first.`
+                : 'Are you sure you want to permanently delete this office geofence?'
+            }
+            disabled={hasEmployees}
+            onConfirm={() => onDelete(office.id, office.name)}
+            okText="Yes, Delete"
+            okButtonProps={{ danger: true }}
+            cancelText="Cancel"
+          >
+            <Button
+              size="middle"
+              danger
+              block
+              icon={<DeleteOutlined />}
+              disabled={hasEmployees}
+              style={{ borderRadius: 8 }}
+            >
+              {hasEmployees ? `Cannot Delete (${office.employee_count} staff assigned)` : 'Delete Geofence'}
+            </Button>
+          </Popconfirm>
+        </PermissionGate>
+      </div>
+    </Card>
+  );
+};
+
 export const OfficesPage: React.FC = () => {
+  const isMobile = useIsMobile(768);
   const [offices, setOffices] = useState<Office[]>([]);
   const [loading, setLoading] = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
@@ -116,7 +270,6 @@ export const OfficesPage: React.FC = () => {
   };
 
   const handleOpenCreateModal = () => {
-    // Default to the first existing office coords or standard default
     const defaultLat = offices[0]?.latitude || 37.774929;
     const defaultLon = offices[0]?.longitude || -122.419416;
     setCreateCoords({ lat: defaultLat, lon: defaultLon, radius: 150 });
@@ -140,8 +293,8 @@ export const OfficesPage: React.FC = () => {
       });
       message.success(
         values.apply_to_all_employees
-          ? 'Office created and assigned to all company employees!'
-          : 'Office location created successfully'
+          ? 'Office created and assigned to ALL company employees!'
+          : 'Office geofence created successfully'
       );
       setCreateModalVisible(false);
       createForm.resetFields();
@@ -181,8 +334,8 @@ export const OfficesPage: React.FC = () => {
       await api.patch(`/offices/${editingOffice.id}`, values);
       message.success(
         values.apply_to_all_employees
-          ? `Office updated and applied to all company employees!`
-          : 'Office details updated successfully'
+          ? `Office updated and assigned to ALL employees in company!`
+          : 'Office geofence updated successfully'
       );
       setEditModalVisible(false);
       setPasteCoordInput('');
@@ -196,7 +349,7 @@ export const OfficesPage: React.FC = () => {
 
   const handleApplyToAll = async (officeId: string, officeName: string) => {
     try {
-      const res = await api.post(`/offices/${officeId}/apply-to-all`);
+      const res = await api.post<ApiResponse<any>>(`/offices/${officeId}/apply-to-all`);
       message.success(
         `All employees assigned to "${officeName}"! (${res.data?.data?.affectedEmployees || 'All'} staff updated)`
       );
@@ -330,52 +483,83 @@ export const OfficesPage: React.FC = () => {
   ];
 
   return (
-    <div style={{ maxWidth: 1280, margin: '0 auto' }}>
-      <Card style={{ borderRadius: 12, marginBottom: 20 }}>
-        <Row gutter={[24, 24]} align="middle">
-          <Col xs={24} md={16}>
-            <Title level={3} style={{ margin: 0 }}>
-              <EnvironmentOutlined style={{ color: '#1677ff', marginRight: 8 }} />
-              Office Geofences & Employee Attendance Coordinates
-            </Title>
-            <Paragraph type="secondary" style={{ marginTop: 4, marginBottom: 0 }}>
-              Pick and choose your exact office area on the interactive map. Search any city, address, or landmark,
-              drag the pin to your office building, and choose to apply that geofence to <strong>all employees</strong> in your company.
-            </Paragraph>
-          </Col>
+    <div style={{ maxWidth: 1280, margin: '0 auto', paddingBottom: 24 }}>
+      {/* ── Page Header ── */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+          flexWrap: 'wrap',
+          gap: 12,
+        }}
+      >
+        <div>
+          <Title level={4} style={{ margin: 0, fontSize: isMobile ? 18 : 22 }}>
+            <EnvironmentOutlined style={{ color: '#1677ff', marginRight: 8 }} />
+            Office Geofences & Locations
+          </Title>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Configure geofence boundaries and govern employee punch locations
+          </Text>
+        </div>
 
-          <Col xs={24} md={8} style={{ textAlign: 'right' }}>
-            <PermissionGate permission={PermissionKey.OFFICE_CREATE}>
-              <Button
-                type="primary"
-                size="large"
-                icon={<PlusOutlined />}
-                onClick={handleOpenCreateModal}
-              >
-                Pick Office on Map
-              </Button>
-            </PermissionGate>
-          </Col>
-        </Row>
-      </Card>
+        <PermissionGate permission={PermissionKey.OFFICE_CREATE}>
+          <Button
+            type="primary"
+            size="middle"
+            icon={<PlusOutlined />}
+            onClick={handleOpenCreateModal}
+            style={{ borderRadius: 8, width: isMobile ? '100%' : 'auto' }}
+          >
+            Pick Office on Map
+          </Button>
+        </PermissionGate>
+      </div>
 
       <Alert
-        message="Geofence Enforcement Rule"
-        description="When an employee performs attendance check-in, their mobile device or browser GPS must fall strictly within the radius of their assigned office. Updating coordinates here takes effect immediately for all assigned staff."
+        message="Geofence Validation"
+        description="Employees must fall strictly within their assigned office boundary to complete check-in."
         type="info"
         showIcon
-        style={{ marginBottom: 20, borderRadius: 8 }}
+        style={{ marginBottom: 16, borderRadius: 8, fontSize: 12 }}
       />
 
-      <Card style={{ borderRadius: 12 }}>
-        <Table
-          dataSource={offices}
-          columns={columns}
-          rowKey="id"
-          loading={loading}
-          pagination={false}
-        />
-      </Card>
+      {/* ── Mobile View: Office Cards ── */}
+      <div className="office-card-list">
+        {offices.length === 0 && !loading ? (
+          <Card style={{ borderRadius: 12, textAlign: 'center', padding: '24px 0' }}>
+            <Empty description="No office locations configured yet" />
+          </Card>
+        ) : (
+          offices.map((office) => (
+            <OfficeCard
+              key={office.id}
+              office={office}
+              totalEmployeesInCompany={totalEmployeesInCompany}
+              onEdit={handleEdit}
+              onApplyToAll={handleApplyToAll}
+              onDelete={handleDeleteOffice}
+            />
+          ))
+        )}
+      </div>
+
+      {/* ── Desktop View: Full Table ── */}
+      <div className="office-table-desktop">
+        <Card style={{ borderRadius: 12 }} styles={{ body: { padding: '16px' } }}>
+          <Table
+            dataSource={offices}
+            columns={columns}
+            rowKey="id"
+            loading={loading}
+            scroll={{ x: 850 }}
+            pagination={false}
+            locale={{ emptyText: <Empty description="No office locations configured yet" /> }}
+          />
+        </Card>
+      </div>
 
       {/* Create Office Modal */}
       <Modal
@@ -387,22 +571,23 @@ export const OfficesPage: React.FC = () => {
         }}
         footer={null}
         destroyOnClose
-        width={720}
+        centered
+        width={isMobile ? '95vw' : 720}
       >
         <Form form={createForm} layout="vertical" onFinish={handleCreate}>
-          <Row gutter={16}>
-            <Col span={12}>
+          <Row gutter={12}>
+            <Col xs={24} sm={12}>
               <Form.Item
                 name="name"
                 label="Office Name"
                 rules={[{ required: true, message: 'Office name is required' }]}
               >
-                <Input placeholder="e.g. Headquarters / Main Branch" />
+                <Input placeholder="e.g. Headquarters / Main Branch" size="large" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="address" label="Street Address">
-                <Input placeholder="e.g. 100 Tech Boulevard, Suite 400" />
+                <Input placeholder="e.g. 100 Tech Boulevard" size="large" />
               </Form.Item>
             </Col>
           </Row>
@@ -416,14 +601,15 @@ export const OfficesPage: React.FC = () => {
             latitude={createCoords.lat}
             longitude={createCoords.lon}
             radiusMeters={createCoords.radius}
+            height={isMobile ? 240 : 360}
             onChange={(lat, lon) => {
               setCreateCoords((prev) => ({ ...prev, lat, lon }));
               createForm.setFieldsValue({ latitude: lat, longitude: lon });
             }}
           />
 
-          <Row gutter={16} style={{ marginTop: 12 }}>
-            <Col span={8}>
+          <Row gutter={12} style={{ marginTop: 12 }}>
+            <Col xs={12} sm={8}>
               <Form.Item
                 name="latitude"
                 label="Latitude"
@@ -433,6 +619,7 @@ export const OfficesPage: React.FC = () => {
                   style={{ width: '100%' }}
                   step={0.000001}
                   precision={6}
+                  size="large"
                   onChange={(val) => {
                     if (typeof val === 'number') {
                       setCreateCoords((prev) => ({ ...prev, lat: val }));
@@ -441,7 +628,7 @@ export const OfficesPage: React.FC = () => {
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={12} sm={8}>
               <Form.Item
                 name="longitude"
                 label="Longitude"
@@ -451,6 +638,7 @@ export const OfficesPage: React.FC = () => {
                   style={{ width: '100%' }}
                   step={0.000001}
                   precision={6}
+                  size="large"
                   onChange={(val) => {
                     if (typeof val === 'number') {
                       setCreateCoords((prev) => ({ ...prev, lon: val }));
@@ -459,10 +647,10 @@ export const OfficesPage: React.FC = () => {
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item
                 name="radius_meters"
-                label="Perimeter Radius (Meters)"
+                label="Radius (Meters)"
                 initialValue={150}
                 rules={[{ required: true, message: 'Radius is required' }]}
               >
@@ -470,6 +658,7 @@ export const OfficesPage: React.FC = () => {
                   style={{ width: '100%' }}
                   min={10}
                   max={10000}
+                  size="large"
                   onChange={(val) => {
                     if (typeof val === 'number') {
                       setCreateCoords((prev) => ({ ...prev, radius: val }));
@@ -482,8 +671,8 @@ export const OfficesPage: React.FC = () => {
 
           <div
             style={{
-              background: '#e6f4ff',
-              border: '1px solid #91caff',
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
               borderRadius: 8,
               padding: 12,
               marginBottom: 16,
@@ -495,36 +684,42 @@ export const OfficesPage: React.FC = () => {
               style={{ marginBottom: 0 }}
             >
               <Switch />
-              <span style={{ marginLeft: 10, fontWeight: 500 }}>
-                Apply this office geofence to ALL employees in the company
+              <span style={{ marginLeft: 10, fontWeight: 600, fontSize: 13 }}>
+                Apply to ALL employees in the company
               </span>
             </Form.Item>
-            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-              If enabled, all staff will be immediately assigned to this office and required to check in within this perimeter.
+            <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+              If enabled, all staff will be immediately assigned to this office.
             </Text>
           </div>
 
-          <div style={{ textAlign: 'right', marginTop: 16 }}>
-            <Space>
-              <Button
-                onClick={() => {
-                  setCreateModalVisible(false);
-                  setPasteCoordInput('');
-                }}
-              >
-                Cancel
-              </Button>
-              <Button type="primary" htmlType="submit" loading={creating}>
-                Save Office Geofence
-              </Button>
-            </Space>
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <Button
+              onClick={() => {
+                setCreateModalVisible(false);
+                setPasteCoordInput('');
+              }}
+              size="large"
+              style={{ flex: 1, borderRadius: 8 }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={creating}
+              size="large"
+              style={{ flex: 1.5, borderRadius: 8 }}
+            >
+              Save Office Geofence
+            </Button>
           </div>
         </Form>
       </Modal>
 
       {/* Edit Office Modal */}
       <Modal
-        title={`Edit Geofence on Map - ${editingOffice?.name}`}
+        title={`Edit Geofence - ${editingOffice?.name}`}
         open={editModalVisible}
         onCancel={() => {
           setEditModalVisible(false);
@@ -532,18 +727,19 @@ export const OfficesPage: React.FC = () => {
         }}
         footer={null}
         destroyOnClose
-        width={720}
+        centered
+        width={isMobile ? '95vw' : 720}
       >
         <Form form={editForm} layout="vertical" onFinish={handleUpdate}>
-          <Row gutter={16}>
-            <Col span={12}>
+          <Row gutter={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="name" label="Office Name" rules={[{ required: true }]}>
-                <Input />
+                <Input size="large" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="address" label="Street Address">
-                <Input />
+                <Input size="large" />
               </Form.Item>
             </Col>
           </Row>
@@ -557,19 +753,21 @@ export const OfficesPage: React.FC = () => {
             latitude={editCoords.lat}
             longitude={editCoords.lon}
             radiusMeters={editCoords.radius}
+            height={isMobile ? 240 : 360}
             onChange={(lat, lon) => {
               setEditCoords((prev) => ({ ...prev, lat, lon }));
               editForm.setFieldsValue({ latitude: lat, longitude: lon });
             }}
           />
 
-          <Row gutter={16} style={{ marginTop: 12 }}>
-            <Col span={8}>
+          <Row gutter={12} style={{ marginTop: 12 }}>
+            <Col xs={12} sm={8}>
               <Form.Item name="latitude" label="Latitude" rules={[{ required: true }]}>
                 <InputNumber
                   style={{ width: '100%' }}
                   step={0.000001}
                   precision={6}
+                  size="large"
                   onChange={(val) => {
                     if (typeof val === 'number') {
                       setEditCoords((prev) => ({ ...prev, lat: val }));
@@ -578,12 +776,13 @@ export const OfficesPage: React.FC = () => {
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={12} sm={8}>
               <Form.Item name="longitude" label="Longitude" rules={[{ required: true }]}>
                 <InputNumber
                   style={{ width: '100%' }}
                   step={0.000001}
                   precision={6}
+                  size="large"
                   onChange={(val) => {
                     if (typeof val === 'number') {
                       setEditCoords((prev) => ({ ...prev, lon: val }));
@@ -592,16 +791,17 @@ export const OfficesPage: React.FC = () => {
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item
                 name="radius_meters"
-                label="Geofence Radius (Meters)"
+                label="Radius (Meters)"
                 rules={[{ required: true }]}
               >
                 <InputNumber
                   style={{ width: '100%' }}
                   min={10}
                   max={10000}
+                  size="large"
                   onChange={(val) => {
                     if (typeof val === 'number') {
                       setEditCoords((prev) => ({ ...prev, radius: val }));
@@ -618,8 +818,8 @@ export const OfficesPage: React.FC = () => {
 
           <div
             style={{
-              background: '#e6f4ff',
-              border: '1px solid #91caff',
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
               borderRadius: 8,
               padding: 12,
               marginBottom: 16,
@@ -631,29 +831,35 @@ export const OfficesPage: React.FC = () => {
               style={{ marginBottom: 0 }}
             >
               <Switch />
-              <span style={{ marginLeft: 10, fontWeight: 500 }}>
-                Apply this updated geofence to ALL employees in the company
+              <span style={{ marginLeft: 10, fontWeight: 600, fontSize: 13 }}>
+                Apply updated geofence to ALL employees
               </span>
             </Form.Item>
-            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-              Currently governs {editingOffice?.employee_count || 0} employees. Toggling this on ensures 100% of staff in your company are reassigned to this office.
+            <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+              Currently governs {editingOffice?.employee_count || 0} employees.
             </Text>
           </div>
 
-          <div style={{ textAlign: 'right', marginTop: 16 }}>
-            <Space>
-              <Button
-                onClick={() => {
-                  setEditModalVisible(false);
-                  setPasteCoordInput('');
-                }}
-              >
-                Cancel
-              </Button>
-              <Button type="primary" htmlType="submit" loading={updating}>
-                Save Changes
-              </Button>
-            </Space>
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <Button
+              onClick={() => {
+                setEditModalVisible(false);
+                setPasteCoordInput('');
+              }}
+              size="large"
+              style={{ flex: 1, borderRadius: 8 }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={updating}
+              size="large"
+              style={{ flex: 1.5, borderRadius: 8 }}
+            >
+              Save Changes
+            </Button>
           </div>
         </Form>
       </Modal>
