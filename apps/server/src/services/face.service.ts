@@ -21,7 +21,7 @@ export class FaceService {
   constructor() {
     this.threshold = process.env.FACE_MATCH_THRESHOLD
       ? parseFloat(process.env.FACE_MATCH_THRESHOLD)
-      : 0.82;
+      : 0.60;
   }
 
   getThreshold(): number {

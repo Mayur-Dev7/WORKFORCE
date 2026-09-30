@@ -21,6 +21,13 @@ describe('Face Verification Biometric Unit Tests', () => {
     expect(length).toBeCloseTo(1.0, 5);
   });
 
+  it('uses default threshold of 0.60 when customThreshold is omitted', () => {
+    expect(faceService.getThreshold()).toBe(0.60);
+    const result = faceService.compareEmbeddings(embeddingA, identicalEmbeddingA);
+    expect(result.matched).toBe(true);
+    expect(result.threshold).toBe(0.60);
+  });
+
   it('matches when similarity exceeds the threshold', () => {
     const result = faceService.compareEmbeddings(embeddingA, identicalEmbeddingA, 0.65);
     expect(result.matched).toBe(true);

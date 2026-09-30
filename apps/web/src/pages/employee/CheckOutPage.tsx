@@ -214,7 +214,7 @@ export const CheckOutPage: React.FC = () => {
     }
 
     if (!faceMatched) {
-      message.error(`Face does not match registered employee (${Math.max(0, Math.round(faceSimilarity * 100))}% match - requires ≥ 65%)`);
+      message.error(`Face does not match registered employee (${faceSimilarity}% match - requires ≥ 60%)`);
       return;
     }
 
