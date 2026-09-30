@@ -392,34 +392,89 @@ export const LeavePage: React.FC = () => {
         />
       </Form.Item>
 
-      {/* Dynamic Quota & Balance Feedback Alert — Clean single-line */}
+      {/* Dynamic Quota & Balance Feedback Card — Apple HIG iOS Style (Clean, Icon-Free, Single-Line) */}
       {selectedLeaveTypeId && (
         <div style={{ marginBottom: 14 }}>
           {isCrossingLimit ? (
-            <Alert
-              type="error"
-              showIcon
-              style={{ borderRadius: 8, padding: '8px 12px' }}
-              message={
-                <span>
-                  <strong>Insufficient balance:</strong> {requestedWorkingDays} days requested, but only {availableDays.toFixed(1)} available
-                </span>
-              }
-            />
+            <div
+              style={{
+                background: 'rgba(255, 59, 48, 0.08)',
+                border: '1px solid rgba(255, 59, 48, 0.22)',
+                borderRadius: 10,
+                padding: '10px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: 13,
+                lineHeight: 1.3,
+                color: '#d32f2f',
+                letterSpacing: '-0.1px',
+              }}
+            >
+              <span>
+                <strong style={{ fontWeight: 600 }}>Insufficient balance:</strong> {requestedWorkingDays}d requested
+              </span>
+              <span
+                style={{
+                  fontWeight: 600,
+                  fontSize: 12,
+                  background: 'rgba(255, 59, 48, 0.14)',
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                  color: '#b71c1c',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {availableDays.toFixed(1)}d available
+              </span>
+            </div>
           ) : hasSelectedDates ? (
-            <Alert
-              type="success"
-              showIcon
-              style={{ borderRadius: 8, padding: '8px 12px' }}
-              message={
-                <span>
-                  {requestedWorkingDays} days requested • {availableDays.toFixed(1)} available ({(availableDays - requestedWorkingDays).toFixed(1)} left)
-                </span>
-              }
-            />
+            <div
+              style={{
+                background: 'rgba(52, 199, 89, 0.08)',
+                border: '1px solid rgba(52, 199, 89, 0.22)',
+                borderRadius: 10,
+                padding: '10px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: 13,
+                lineHeight: 1.3,
+                color: '#2e7d32',
+                letterSpacing: '-0.1px',
+              }}
+            >
+              <span>
+                {requestedWorkingDays} {requestedWorkingDays === 1 ? 'day' : 'days'} requested
+              </span>
+              <span
+                style={{
+                  fontWeight: 600,
+                  fontSize: 12,
+                  background: 'rgba(52, 199, 89, 0.14)',
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                  color: '#1b5e20',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {(availableDays - requestedWorkingDays).toFixed(1)}d remaining
+              </span>
+            </div>
           ) : (
-            <div style={{ fontSize: 12, color: '#6b7280', padding: '2px 4px' }}>
-              Available quota: <strong>{availableDays.toFixed(1)} days</strong>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '2px 4px',
+                fontSize: 12,
+                color: '#6b7280',
+                letterSpacing: '-0.1px',
+              }}
+            >
+              <span>Available balance</span>
+              <span style={{ fontWeight: 600, color: '#374151' }}>{availableDays.toFixed(1)} days</span>
             </div>
           )}
         </div>
