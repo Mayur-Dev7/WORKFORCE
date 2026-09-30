@@ -392,48 +392,34 @@ export const LeavePage: React.FC = () => {
         />
       </Form.Item>
 
-      {/* Dynamic Quota & Balance Feedback Alert */}
+      {/* Dynamic Quota & Balance Feedback Alert — Clean single-line */}
       {selectedLeaveTypeId && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 14 }}>
           {isCrossingLimit ? (
             <Alert
               type="error"
               showIcon
-              style={{ borderRadius: 8 }}
-              message={<span style={{ fontWeight: 600 }}>Insufficient Leave Balance</span>}
-              description={
-                <div>
-                  Requested: <strong>{requestedWorkingDays} day(s)</strong>, but only{' '}
-                  <strong>{availableDays.toFixed(2)} day(s)</strong> available for {selectedType?.name || 'this leave'}.
-                  <div style={{ marginTop: 4, color: '#cf1322', fontSize: 12 }}>
-                    ⚠️ Exceeds available quota by {(requestedWorkingDays - availableDays).toFixed(2)} day(s). Please reduce your selected date range.
-                  </div>
-                </div>
+              style={{ borderRadius: 8, padding: '8px 12px' }}
+              message={
+                <span>
+                  <strong>Insufficient balance:</strong> {requestedWorkingDays} days requested, but only {availableDays.toFixed(1)} available
+                </span>
               }
             />
           ) : hasSelectedDates ? (
             <Alert
               type="success"
               showIcon
-              style={{ borderRadius: 8 }}
+              style={{ borderRadius: 8, padding: '8px 12px' }}
               message={
                 <span>
-                  <strong>{requestedWorkingDays} working day(s)</strong> selected •{' '}
-                  <strong>{availableDays.toFixed(2)} day(s)</strong> available
+                  {requestedWorkingDays} days requested • {availableDays.toFixed(1)} available ({(availableDays - requestedWorkingDays).toFixed(1)} left)
                 </span>
-              }
-              description={
-                <div style={{ fontSize: 12, color: '#389e0d' }}>
-                  Remaining balance after approval: {(availableDays - requestedWorkingDays).toFixed(2)} day(s)
-                </div>
               }
             />
           ) : (
             <div style={{ fontSize: 12, color: '#6b7280', padding: '2px 4px' }}>
-              Available quota for {selectedType?.name}: <strong>{availableDays.toFixed(2)} day(s)</strong>
-              {selectedBalance && (
-                <span> ({selectedBalance.used_days} used, {selectedBalance.pending_days} pending)</span>
-              )}
+              Available quota: <strong>{availableDays.toFixed(1)} days</strong>
             </div>
           )}
         </div>
