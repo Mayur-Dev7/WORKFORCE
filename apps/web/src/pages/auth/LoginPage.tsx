@@ -37,12 +37,8 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const user = await login(values.identifier, values.password);
-      if (user.role_name === 'SUPER_ADMIN' || user.role_name === 'HR_ADMIN') {
-        navigate('/admin/dashboard');
-      } else {
-        navigate(from, { replace: true });
-      }
+      await login(values.identifier, values.password);
+      navigate(from, { replace: true });
     } catch (err: any) {
       const msg = err.response?.data?.error?.message || err.message || 'Login failed';
       setErrorMsg(msg);
