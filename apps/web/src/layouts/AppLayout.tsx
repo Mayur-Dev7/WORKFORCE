@@ -303,21 +303,25 @@ export const AppLayout: React.FC = () => {
           {/* Left: Section Title or Current Date */}
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
             {location.pathname === '/employee/dashboard' ? (
-              <span style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--apple-text-secondary)', letterSpacing: '-0.1px' }}>
-                {dayjs().format('dddd, MMMM D')}
-              </span>
+              <>
+                <span className="apple-header-date">
+                  {dayjs().format('dddd, MMMM D')}
+                </span>
+                <span className="mobile-only" style={{ fontSize: 15, fontWeight: 600, color: 'var(--apple-text-primary)', letterSpacing: '-0.2px', whiteSpace: 'nowrap' }}>
+                  Workforce Access
+                </span>
+              </>
             ) : (
               <span className="apple-header-title">{getPageTitle(location.pathname)}</span>
             )}
           </div>
 
           {/* Right: Assigned Office & Employee Profile Menu */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             {user?.office_name && (
               <div
                 className="apple-header-office"
                 style={{
-                  display: 'inline-flex',
                   alignItems: 'center',
                   gap: 5,
                   fontSize: 12,
@@ -326,6 +330,7 @@ export const AppLayout: React.FC = () => {
                   padding: '3px 10px',
                   borderRadius: 9999,
                   border: '1px solid var(--apple-border-subtle)',
+                  whiteSpace: 'nowrap',
                 }}
                 title={`Assigned Office: ${user.office_name}`}
               >
@@ -346,25 +351,27 @@ export const AppLayout: React.FC = () => {
                   background: 'transparent',
                   border: 'none',
                   cursor: 'pointer',
-                  padding: '4px 8px',
+                  padding: '4px',
                   borderRadius: 8,
                   transition: 'background-color 0.12s ease',
+                  flexShrink: 0,
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.04)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
               >
                 <Avatar
-                  size={28}
+                  size={30}
                   style={{
                     backgroundColor: '#e5e5ea',
                     color: 'var(--apple-text-primary)',
-                    fontSize: 12,
+                    fontSize: 12.5,
                     fontWeight: 600,
+                    flexShrink: 0,
                   }}
                 >
                   {user?.name ? user.name.charAt(0).toUpperCase() : <UserOutlined />}
                 </Avatar>
-                <div style={{ textAlign: 'left', lineHeight: 1.2 }}>
+                <div className="apple-header-profile-text" style={{ textAlign: 'left', lineHeight: 1.2 }}>
                   <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--apple-text-primary)', whiteSpace: 'nowrap' }}>
                     {user?.name}
                   </div>

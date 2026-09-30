@@ -932,24 +932,71 @@ html, body {
   border-bottom: 1px solid var(--apple-border) !important;
   box-shadow: none !important;
   height: 52px !important;
-  line-height: 52px !important;
+  line-height: normal !important;
+  overflow: hidden !important;
 }
 
 .apple-header-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--apple-text-primary);
   letter-spacing: -0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.apple-header-tag {
-  background: rgba(0, 0, 0, 0.04);
-  color: var(--apple-text-secondary);
-  border: 1px solid var(--apple-border);
-  border-radius: 9999px;
-  font-size: 11.5px;
-  font-weight: 500;
-  padding: 1px 8px;
+/* Date in header — visible on desktop only */
+.apple-header-date {
+  display: none;
+}
+@media (min-width: 769px) {
+  .apple-header-date {
+    display: inline-block;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--apple-text-secondary);
+    letter-spacing: -0.1px;
+    white-space: nowrap;
+  }
+}
+
+/* Office badge in header — visible on desktop only */
+.apple-header-office {
+  display: none !important;
+}
+@media (min-width: 769px) {
+  .apple-header-office {
+    display: inline-flex !important;
+  }
+}
+
+/* Profile text — visible on desktop only */
+.apple-header-profile-text {
+  display: none;
+}
+@media (min-width: 769px) {
+  .apple-header-profile-text {
+    display: block;
+  }
+}
+
+/* Responsive display helpers */
+.mobile-only {
+  display: none !important;
+}
+@media (max-width: 768px) {
+  .mobile-only {
+    display: inline-block !important;
+  }
+  .desktop-only {
+    display: none !important;
+  }
+}
+@media (min-width: 769px) {
+  .desktop-only {
+    display: inline-block !important;
+  }
 }
 
 /* ─── Apple Dashboard Layout ────────────────────────── */
