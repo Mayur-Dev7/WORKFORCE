@@ -25,6 +25,7 @@ export interface ResponsiveDateRangePickerProps {
   style?: React.CSSProperties;
   className?: string;
   allowClear?: boolean;
+  maxDays?: number;
 }
 
 const WEEKDAY_NAMES = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -60,6 +61,7 @@ export const ResponsiveDateRangePicker: React.FC<ResponsiveDateRangePickerProps>
   style,
   className,
   allowClear = true,
+  maxDays,
 }) => {
   const isMobileWidth = useIsMobile(768);
   const isCoarsePointer = useIsCoarsePointer();
@@ -95,6 +97,7 @@ export const ResponsiveDateRangePicker: React.FC<ResponsiveDateRangePickerProps>
       style={style}
       className={className}
       allowClear={allowClear}
+      maxDays={maxDays}
     />
   );
 };
@@ -109,6 +112,7 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
   style,
   className,
   allowClear = true,
+  maxDays,
 }) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [tempStart, setTempStart] = useState<Dayjs | null>(value?.[0] || null);
@@ -497,20 +501,29 @@ const MobileDateRangePickerInner: React.FC<ResponsiveDateRangePickerProps> = ({
             borderRadius: 6,
           }}
         >
-          <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.3 }}>
-            {activeStep === 'start'
-              ? '👉 Tap a date for Start Date'
-              : !tempStart
-              ? '👉 Tap a date for Start Date'
-              : !tempEnd
-              ? '👉 Tap a date for End Date'
-              : '✅ Range chosen. Tap Apply to confirm.'}
-          </Text>
-          {selectedDurationDays > 0 && (
-            <Tag color="blue" style={{ margin: 0, fontWeight: 600, fontSize: 11 }}>
-              {selectedDurationDays} {selectedDurationDays === 1 ? 'day' : 'days'}
-            </Tag>
-          )}
+          {(() => {
+            const isExceeding = maxDays !== undefined && maxDays >= 0 && selectedDurationDays > maxDays;
+            return (
+              <>
+                <Text type={isExceeding ? 'danger' : 'secondary'} style={{ fontSize: 12, lineHeight: 1.3 }}>
+                  {activeStep === 'start'
+                    ? '👉 Tap a date for Start Date'
+                    : !tempStart
+                    ? '👉 Tap a date for Start Date'
+                    : !tempEnd
+                    ? '👉 Tap a date for End Date'
+                    : isExceeding
+                    ? `⚠️ Exceeds quota (max ${maxDays}d)`
+                    : '✅ Range chosen. Tap Apply to confirm.'}
+                </Text>
+                {selectedDurationDays > 0 && (
+                  <Tag color={isExceeding ? 'error' : 'blue'} style={{ margin: 0, fontWeight: 600, fontSize: 11 }}>
+                    {selectedDurationDays} {selectedDurationDays === 1 ? 'day' : 'days'}
+                  </Tag>
+                )}
+              </>
+            );
+          })()}
         </div>
 
         {/* ── Month & Year Navigation ── */}

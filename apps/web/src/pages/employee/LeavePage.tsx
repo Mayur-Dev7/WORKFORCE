@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Card,
   Table,
@@ -19,7 +19,13 @@ import {
   Empty,
   Drawer,
   Progress,
+  Alert,
 } from 'antd';
+
+message.config({
+  maxCount: 1,
+  duration: 3,
+});
 import {
   PlusOutlined,
   CalendarOutlined,
@@ -168,6 +174,51 @@ export const LeavePage: React.FC = () => {
 
   const isMobile = useIsMobile(768);
 
+  const selectedLeaveTypeId = Form.useWatch('leave_type_id', applyForm);
+
+  const selectedBalance = useMemo(
+    () => balances.find((b) => b.leave_type_id === selectedLeaveTypeId),
+    [balances, selectedLeaveTypeId]
+  );
+
+  const selectedType = useMemo(
+    () => leaveTypes.find((t) => t.id === selectedLeaveTypeId),
+    [leaveTypes, selectedLeaveTypeId]
+  );
+
+  const availableDays = useMemo(() => {
+    if (!selectedBalance) return 0;
+    return Number(
+      selectedBalance.remaining_days ??
+        (selectedBalance.allocated_days - selectedBalance.used_days - selectedBalance.pending_days)
+    );
+  }, [selectedBalance]);
+
+  // Calculate requested working days (excluding Sundays, matching corporate calendar)
+  const requestedWorkingDays = useMemo(() => {
+    if (!dateRange || !dateRange[0] || !dateRange[1]) return 0;
+    const start = dateRange[0].startOf('day');
+    const end = dateRange[1].startOf('day');
+    if (end.isBefore(start)) return 0;
+
+    let count = 0;
+    let curr = start;
+    while (curr.isBefore(end) || curr.isSame(end, 'day')) {
+      if (curr.day() !== 0) {
+        count++;
+      }
+      curr = curr.add(1, 'day');
+    }
+    return count;
+  }, [dateRange]);
+
+  const hasSelectedDates = Boolean(dateRange && dateRange[0] && dateRange[1]);
+  const isCrossingLimit = Boolean(
+    selectedLeaveTypeId &&
+    hasSelectedDates &&
+    requestedWorkingDays > availableDays
+  );
+
   const fetchAll = async () => {
     setLoading(true);
     try {
@@ -180,7 +231,7 @@ export const LeavePage: React.FC = () => {
       setRequests(reqRes.data.data);
       setLeaveTypes(typesRes.data.data);
     } catch {
-      message.error('Failed to load leave data');
+      message.error({ content: 'Failed to load leave data', key: 'leave-action-toast' });
     } finally {
       setLoading(false);
     }
@@ -191,10 +242,21 @@ export const LeavePage: React.FC = () => {
   }, [filterYear, filterStatus]);
 
   const handleApply = async (values: any) => {
+    if (applying) return; // Prevent double-clicks from rapid tapping
+
     if (!dateRange || !dateRange[0] || !dateRange[1]) {
-      message.error('Please select a date range');
+      message.error({ content: 'Please select a date range', key: 'leave-action-toast' });
       return;
     }
+
+    if (isCrossingLimit) {
+      message.error({
+        content: `Insufficient leave balance. Requested: ${requestedWorkingDays} day(s), Available: ${availableDays.toFixed(2)} day(s)`,
+        key: 'leave-action-toast',
+      });
+      return;
+    }
+
     setApplying(true);
     try {
       await applyLeave({
@@ -203,13 +265,14 @@ export const LeavePage: React.FC = () => {
         end_date: dateRange[1].format('YYYY-MM-DD'),
         reason: values.reason || '',
       });
-      message.success('Leave application submitted successfully');
+      message.success({ content: 'Leave application submitted successfully', key: 'leave-action-toast' });
       setApplyVisible(false);
       applyForm.resetFields();
       setDateRange(null);
       fetchAll();
     } catch (err: any) {
-      message.error(err.response?.data?.error?.message || 'Failed to apply for leave');
+      const msg = err.response?.data?.error?.message || 'Failed to apply for leave';
+      message.error({ content: msg, key: 'leave-action-toast' });
     } finally {
       setApplying(false);
     }
@@ -219,10 +282,10 @@ export const LeavePage: React.FC = () => {
     setCancellingId(id);
     try {
       await cancelMyLeaveRequest(id);
-      message.success('Leave request cancelled');
+      message.success({ content: 'Leave request cancelled', key: 'leave-action-toast' });
       fetchAll();
     } catch (err: any) {
-      message.error(err.response?.data?.error?.message || 'Failed to cancel request');
+      message.error({ content: err.response?.data?.error?.message || 'Failed to cancel request', key: 'leave-action-toast' });
     } finally {
       setCancellingId(null);
     }
@@ -325,8 +388,56 @@ export const LeavePage: React.FC = () => {
           onChange={(val) => setDateRange(val)}
           disabledDate={(d) => Boolean(d && d < dayjs().startOf('day'))}
           format="DD MMM YYYY"
+          maxDays={selectedLeaveTypeId ? availableDays : undefined}
         />
       </Form.Item>
+
+      {/* Dynamic Quota & Balance Feedback Alert */}
+      {selectedLeaveTypeId && (
+        <div style={{ marginBottom: 16 }}>
+          {isCrossingLimit ? (
+            <Alert
+              type="error"
+              showIcon
+              style={{ borderRadius: 8 }}
+              message={<span style={{ fontWeight: 600 }}>Insufficient Leave Balance</span>}
+              description={
+                <div>
+                  Requested: <strong>{requestedWorkingDays} day(s)</strong>, but only{' '}
+                  <strong>{availableDays.toFixed(2)} day(s)</strong> available for {selectedType?.name || 'this leave'}.
+                  <div style={{ marginTop: 4, color: '#cf1322', fontSize: 12 }}>
+                    ⚠️ Exceeds available quota by {(requestedWorkingDays - availableDays).toFixed(2)} day(s). Please reduce your selected date range.
+                  </div>
+                </div>
+              }
+            />
+          ) : hasSelectedDates ? (
+            <Alert
+              type="success"
+              showIcon
+              style={{ borderRadius: 8 }}
+              message={
+                <span>
+                  <strong>{requestedWorkingDays} working day(s)</strong> selected •{' '}
+                  <strong>{availableDays.toFixed(2)} day(s)</strong> available
+                </span>
+              }
+              description={
+                <div style={{ fontSize: 12, color: '#389e0d' }}>
+                  Remaining balance after approval: {(availableDays - requestedWorkingDays).toFixed(2)} day(s)
+                </div>
+              }
+            />
+          ) : (
+            <div style={{ fontSize: 12, color: '#6b7280', padding: '2px 4px' }}>
+              Available quota for {selectedType?.name}: <strong>{availableDays.toFixed(2)} day(s)</strong>
+              {selectedBalance && (
+                <span> ({selectedBalance.used_days} used, {selectedBalance.pending_days} pending)</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <Form.Item name="reason" label="Reason (optional)">
         <TextArea rows={3} placeholder="Reason for your leave" />
@@ -336,11 +447,15 @@ export const LeavePage: React.FC = () => {
         type="primary"
         htmlType="submit"
         loading={applying}
+        disabled={applying || isCrossingLimit}
+        danger={isCrossingLimit}
         block
         size="large"
-        style={{ marginTop: 8 }}
+        style={{ marginTop: 8, height: 44, borderRadius: 8 }}
       >
-        Submit Application
+        {isCrossingLimit
+          ? `Cannot Submit (Exceeds ${availableDays.toFixed(1)}d Limit)`
+          : 'Submit Application'}
       </Button>
     </Form>
   );

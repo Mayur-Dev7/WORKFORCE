@@ -51,6 +51,13 @@ export class LeaveService {
       throw new AppError(ErrorCode.LEAVE_INVALID_DATES, 'end_date must be on or after start_date');
     }
 
+    if (startDate.getUTCFullYear() !== endDate.getUTCFullYear()) {
+      throw new AppError(
+        ErrorCode.LEAVE_INVALID_DATES,
+        'Leave requests cannot span across multiple calendar years. Please submit separate applications for each year.'
+      );
+    }
+
     // Get leave type (validates it exists and belongs to company)
     const leaveType = await leaveTypesRepository.findById(data.leave_type_id);
     if (!leaveType || leaveType.company_id !== userContext.company_id || !leaveType.is_active) {
