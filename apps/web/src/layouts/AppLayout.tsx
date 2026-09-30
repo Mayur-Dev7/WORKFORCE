@@ -32,6 +32,7 @@ import {
 } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.js';
 import { PermissionKey } from '@workforce/shared';
+import dayjs from 'dayjs';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -299,55 +300,81 @@ export const AppLayout: React.FC = () => {
             style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           />
 
-          {/* Left: Current Page Title + Subtle Location Indicator */}
+          {/* Left: Section Title or Current Date */}
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
-            <span className="apple-header-title">{getPageTitle(location.pathname)}</span>
-            {user?.office_name && (
-              <span className="apple-header-tag" style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {user.office_name}
+            {location.pathname === '/employee/dashboard' ? (
+              <span style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--apple-text-secondary)', letterSpacing: '-0.1px' }}>
+                {dayjs().format('dddd, MMMM D')}
               </span>
+            ) : (
+              <span className="apple-header-title">{getPageTitle(location.pathname)}</span>
             )}
           </div>
 
-          {/* Right: Employee Profile Menu */}
-          <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-            <button
-              type="button"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '4px 8px',
-                borderRadius: 8,
-                transition: 'background-color 0.12s ease',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.04)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-            >
-              <Avatar
-                size={28}
+          {/* Right: Assigned Office & Employee Profile Menu */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {user?.office_name && (
+              <div
+                className="apple-header-office"
                 style={{
-                  backgroundColor: '#e5e5ea',
-                  color: 'var(--apple-text-primary)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
                   fontSize: 12,
-                  fontWeight: 600,
+                  color: 'var(--apple-text-secondary)',
+                  background: 'rgba(0,0,0,0.03)',
+                  padding: '3px 10px',
+                  borderRadius: 9999,
+                  border: '1px solid var(--apple-border-subtle)',
                 }}
+                title={`Assigned Office: ${user.office_name}`}
               >
-                {user?.name ? user.name.charAt(0).toUpperCase() : <UserOutlined />}
-              </Avatar>
-              <div style={{ textAlign: 'left', lineHeight: 1.2 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--apple-text-primary)', whiteSpace: 'nowrap' }}>
-                  {user?.name}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--apple-text-secondary)', whiteSpace: 'nowrap' }}>
-                  {user?.employee_code}
-                </div>
+                <EnvironmentOutlined style={{ fontSize: 11, color: 'var(--apple-text-secondary)' }} />
+                <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user.office_name}
+                </span>
               </div>
-            </button>
-          </Dropdown>
+            )}
+
+            <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+              <button
+                type="button"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  borderRadius: 8,
+                  transition: 'background-color 0.12s ease',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.04)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+              >
+                <Avatar
+                  size={28}
+                  style={{
+                    backgroundColor: '#e5e5ea',
+                    color: 'var(--apple-text-primary)',
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  {user?.name ? user.name.charAt(0).toUpperCase() : <UserOutlined />}
+                </Avatar>
+                <div style={{ textAlign: 'left', lineHeight: 1.2 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--apple-text-primary)', whiteSpace: 'nowrap' }}>
+                    {user?.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--apple-text-secondary)', whiteSpace: 'nowrap' }}>
+                    {user?.employee_code}
+                  </div>
+                </div>
+              </button>
+            </Dropdown>
+          </div>
         </Header>
 
         <Content className="app-content">

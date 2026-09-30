@@ -153,6 +153,40 @@ export const EmployeeDashboard: React.FC = () => {
     return 'Good evening';
   }, []);
 
+  // Format attendance duration
+  const formatDuration = (checkIn: string, checkOut: string | null) => {
+    if (!checkIn) return '--';
+    const start = dayjs(checkIn);
+    const end = checkOut ? dayjs(checkOut) : dayjs();
+    const diffMinutes = Math.max(0, end.diff(start, 'minute'));
+    const hours = Math.floor(diffMinutes / 60);
+    const mins = diffMinutes % 60;
+
+    let timeStr = '';
+    if (hours > 0) {
+      timeStr = `${hours}h ${mins}m`;
+    } else if (mins > 0) {
+      timeStr = `${mins}m`;
+    } else {
+      timeStr = '< 1m';
+    }
+
+    if (!checkOut) {
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#1d1d1f' }}>
+          <span className="apple-dot green" />
+          <span>Active ({timeStr})</span>
+        </span>
+      );
+    }
+
+    return (
+      <span style={{ fontWeight: 500, color: '#1d1d1f' }}>
+        {timeStr}
+      </span>
+    );
+  };
+
   const columns = [
     {
       title: 'Date',
@@ -187,29 +221,10 @@ export const EmployeeDashboard: React.FC = () => {
         ),
     },
     {
-      title: 'Face Match',
-      dataIndex: 'check_in_face_similarity',
-      key: 'similarity',
-      render: (val: number | null) =>
-        val !== null && val !== undefined ? (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#1d1d1f' }}>
-            <span className="apple-dot green" />
-            <span>{(val * 100).toFixed(0)}% Match</span>
-          </span>
-        ) : (
-          <span style={{ color: '#86868b' }}>--</span>
-        ),
-    },
-    {
-      title: 'Distance',
-      dataIndex: 'check_in_distance_meters',
-      key: 'distance',
-      render: (val: number | null) =>
-        val !== null && val !== undefined ? (
-          <span style={{ color: '#6e6e73' }}>{Math.round(val)} m from office</span>
-        ) : (
-          <span style={{ color: '#86868b' }}>--</span>
-        ),
+      title: 'Duration',
+      key: 'duration',
+      render: (_: any, record: AttendanceSession) =>
+        formatDuration(record.check_in_at, record.check_out_at),
     },
   ];
 
@@ -229,37 +244,26 @@ export const EmployeeDashboard: React.FC = () => {
   return (
     <div className="apple-dashboard-container">
       {/* ─── 1. Page Header ─────────────────────────── */}
-      <header style={{ marginBottom: 28 }}>
+      <header style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
           <div>
             <h1
               style={{
-                fontSize: 32,
+                fontSize: 28,
                 fontWeight: 600,
                 color: '#1d1d1f',
                 margin: 0,
                 letterSpacing: '-0.02em',
-                lineHeight: 1.15,
-              }}
-            >
-              Dashboard
-            </h1>
-            <div
-              style={{
-                fontSize: 20,
-                fontWeight: 500,
-                color: '#1d1d1f',
-                marginTop: 6,
-                letterSpacing: '-0.01em',
+                lineHeight: 1.2,
               }}
             >
               {greetingTime}, {firstName}
-              {/* Hidden text for accessibility & test assertion compatibility */}
-              <span className="sr-only" style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>
-                Welcome, {user?.name}
-              </span>
-            </div>
-            <div style={{ fontSize: 14, color: '#86868b', marginTop: 3 }}>
+            </h1>
+            {/* Hidden text for accessibility & test assertion compatibility */}
+            <span className="sr-only" style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>
+              Welcome, {user?.name}
+            </span>
+            <div style={{ fontSize: 14, color: '#86868b', marginTop: 4 }}>
               <span>{user?.department_name || 'Senior Developer'}</span>
               <span style={{ margin: '0 6px' }}>·</span>
               <span style={{ fontWeight: 600, color: '#1d1d1f' }}>{user?.employee_code}</span>
@@ -585,7 +589,8 @@ export const EmployeeDashboard: React.FC = () => {
           Recent Attendance
         </div>
 
-        <div className="apple-table" style={{ overflowX: 'auto' }}>
+        {/* Desktop View: Table */}
+        <div className="apple-desktop-table apple-table" style={{ overflowX: 'auto' }}>
           <Table
             dataSource={history}
             columns={columns}
@@ -593,6 +598,40 @@ export const EmployeeDashboard: React.FC = () => {
             pagination={false}
             locale={{ emptyText: 'No recent attendance sessions logged' }}
           />
+        </div>
+
+        {/* Mobile View: Clean iOS/macOS Grouped Cards */}
+        <div className="apple-mobile-attendance-list">
+          {history.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: '#86868b', fontSize: 14 }}>
+              No recent attendance sessions logged
+            </div>
+          ) : (
+            history.map((session) => {
+              const durationFormatted = formatDuration(session.check_in_at, session.check_out_at);
+              return (
+                <div key={session.id} className="apple-mobile-session-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#1d1d1f' }}>
+                      {dayjs(session.check_in_at).format('MMM DD, YYYY')}
+                    </span>
+                    <span style={{ fontSize: 12.5 }}>
+                      {durationFormatted}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#6e6e73' }}>
+                    <span>{dayjs(session.check_in_at).format('hh:mm A')}</span>
+                    <span style={{ color: '#86868b' }}>→</span>
+                    <span>
+                      {session.check_out_at
+                        ? dayjs(session.check_out_at).format('hh:mm A')
+                        : 'In Session'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </section>
     </div>

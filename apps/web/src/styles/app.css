@@ -1216,7 +1216,40 @@ html, body {
   .apple-metric-value {
     font-size: 24px;
   }
+  .apple-desktop-table {
+    display: none !important;
+  }
+  .apple-mobile-attendance-list {
+    display: flex !important;
+    flex-direction: column;
+    gap: 10px;
+  }
 }
+
+@media (min-width: 769px) {
+  .apple-desktop-table {
+    display: block;
+  }
+  .apple-mobile-attendance-list {
+    display: none !important;
+  }
+}
+
+.apple-mobile-session-card {
+  background: #fbfbfd;
+  border: 1px solid var(--apple-border-subtle);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: background-color 0.12s ease;
+}
+
+.apple-mobile-session-card:active {
+  background: #f0f0f3;
+}
+
 
 /* Reduced motion accessibility */
 @media (prefers-reduced-motion: reduce) {
