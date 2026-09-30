@@ -33,6 +33,8 @@ import { Office, ApiResponse, PermissionKey } from '@workforce/shared';
 import { PermissionGate } from '../../components/common/PermissionGate.js';
 import { MapPicker } from '../../components/common/MapPicker.js';
 import { useIsMobile } from '../../hooks/useMediaQuery.js';
+import { useAuth } from '../../context/AuthContext.js';
+import { useLocationWarmup, broadcastOfficeUpdate } from '../../context/LocationContext.js';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -189,6 +191,8 @@ const OfficeCard: React.FC<{
 
 export const OfficesPage: React.FC = () => {
   const isMobile = useIsMobile(768);
+  const { refreshUser } = useAuth();
+  const { forceRefreshOffice } = useLocationWarmup();
   const [offices, setOffices] = useState<Office[]>([]);
   const [loading, setLoading] = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
@@ -287,7 +291,7 @@ export const OfficesPage: React.FC = () => {
     setCreating(true);
     try {
       const companyId = offices[0]?.company_id || '00000000-0000-0000-0000-000000000000';
-      await api.post('/offices', {
+      const res = await api.post<ApiResponse<Office>>('/offices', {
         ...values,
         company_id: companyId,
       });
@@ -296,6 +300,13 @@ export const OfficesPage: React.FC = () => {
           ? 'Office created and assigned to ALL company employees!'
           : 'Office geofence created successfully'
       );
+      if (values.apply_to_all_employees) {
+        await refreshUser();
+        if (res.data?.data?.id) {
+          await forceRefreshOffice(res.data.data.id);
+        }
+        broadcastOfficeUpdate();
+      }
       setCreateModalVisible(false);
       createForm.resetFields();
       setPasteCoordInput('');
@@ -337,6 +348,9 @@ export const OfficesPage: React.FC = () => {
           ? `Office updated and assigned to ALL employees in company!`
           : 'Office geofence updated successfully'
       );
+      await refreshUser();
+      await forceRefreshOffice(editingOffice.id);
+      broadcastOfficeUpdate();
       setEditModalVisible(false);
       setPasteCoordInput('');
       fetchOffices();
@@ -353,6 +367,9 @@ export const OfficesPage: React.FC = () => {
       message.success(
         `All employees assigned to "${officeName}"! (${res.data?.data?.affectedEmployees || 'All'} staff updated)`
       );
+      await refreshUser();
+      await forceRefreshOffice(officeId);
+      broadcastOfficeUpdate();
       fetchOffices();
     } catch (err: any) {
       message.error(err.response?.data?.error?.message || 'Failed to apply office to employees');
@@ -363,6 +380,9 @@ export const OfficesPage: React.FC = () => {
     try {
       await api.delete(`/offices/${officeId}`);
       message.success(`Office "${officeName}" deleted successfully`);
+      await refreshUser();
+      await forceRefreshOffice();
+      broadcastOfficeUpdate();
       fetchOffices();
     } catch (err: any) {
       message.error(err.response?.data?.error?.message || 'Failed to delete office');

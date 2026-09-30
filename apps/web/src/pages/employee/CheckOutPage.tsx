@@ -25,12 +25,8 @@ const { Title, Text } = Typography;
 
 export const CheckOutPage: React.FC = () => {
   const { user, refreshUser } = useAuth();
-  const { cachedOffice, cachedFaceTemplate, getFastVerifiedLocation } = useLocationWarmup();
+  const { cachedOffice, cachedFaceTemplate, getFastVerifiedLocation, forceRefreshOffice } = useLocationWarmup();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    refreshUser();
-  }, [refreshUser]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -58,6 +54,13 @@ export const CheckOutPage: React.FC = () => {
   const [resultError, setResultError] = useState<{ title: string; message: string } | null>(null);
   const [livenessInstruction, setLivenessInstruction] = useState('Position face inside oval');
 
+  // Sync office state with cachedOffice whenever it updates
+  useEffect(() => {
+    if (cachedOffice) {
+      setOffice(cachedOffice);
+    }
+  }, [cachedOffice]);
+
   // Verify location using warmed background snapshot & fast fresh GPS check
   const verifyLocation = useCallback(async (forceFresh = false) => {
     setLocationChecking(true);
@@ -83,13 +86,20 @@ export const CheckOutPage: React.FC = () => {
     let active = true;
 
     async function init() {
-      // 1. Preload office if not yet in cache
-      if (user?.office_id && !cachedOffice) {
-        api.get<ApiResponse<Office>>(`/offices/${user.office_id}`)
-          .then((res) => {
-            if (active && res.data?.data) setOffice(res.data.data);
-          })
-          .catch(console.error);
+      // 1. Refresh user to ensure latest office_id
+      const freshUser = await refreshUser();
+      const currentOfficeId = freshUser?.office_id || user?.office_id;
+
+      // 2. Preload/revalidate office
+      if (currentOfficeId) {
+        if (!cachedOffice || cachedOffice.id !== currentOfficeId) {
+          try {
+            const off = await forceRefreshOffice(currentOfficeId);
+            if (active && off) setOffice(off);
+          } catch (e) {
+            console.error('Failed to load fresh office', e);
+          }
+        }
       }
 
       // 2. Preload face template if not yet in cache

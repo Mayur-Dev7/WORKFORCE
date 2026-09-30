@@ -41,6 +41,7 @@ export interface LocationContextType {
   isWarm: boolean;
   getFastVerifiedLocation: (forceFresh?: boolean) => Promise<VerificationResult>;
   refreshWarmup: () => Promise<void>;
+  forceRefreshOffice: (specificOfficeId?: string) => Promise<Office | null>;
 }
 
 export function calculateDistanceMeters(
@@ -59,13 +60,31 @@ export function calculateDistanceMeters(
   return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
+/**
+ * Broadcasts an office update event across tabs and to the current window
+ */
+export function broadcastOfficeUpdate() {
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('workforce:office_updated'));
+    }
+    if (typeof BroadcastChannel !== 'undefined') {
+      const channel = new BroadcastChannel('workforce_office_channel');
+      channel.postMessage('office_updated');
+      channel.close();
+    }
+  } catch {
+    // Ignore cross-origin / unsupported environments
+  }
+}
+
 const LocationContext = createContext<LocationContextType | undefined>(undefined);
 
 // Maximum allowable GPS drift (in meters) between app launch snapshot and check-in to consider locations identical
 const DRIFT_THRESHOLD_METERS = 50;
 
 export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, refreshUser } = useAuth();
 
   const [initialSnapshot, setInitialSnapshot] = useState<LocationSnapshot | null>(null);
   const [cachedOffice, setCachedOffice] = useState<Office | null>(null);
@@ -92,25 +111,98 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     latestCoordsRef.current = latestCoords;
   }, [latestCoords]);
 
+  /**
+   * Explicitly fetches and updates the assigned office (bypassing stale cache).
+   * Useful when an admin edits an office, deletes an office, or applies an office to all staff.
+   */
+  const forceRefreshOffice = useCallback(
+    async (specificOfficeId?: string): Promise<Office | null> => {
+      const targetId = specificOfficeId || user?.office_id;
+      if (!targetId) {
+        setCachedOffice(null);
+        cachedOfficeRef.current = null;
+        return null;
+      }
+
+      try {
+        const res = await api.get<ApiResponse<Office>>(`/offices/${targetId}`);
+        const freshOffice = res.data?.data || null;
+
+        if (freshOffice) {
+          setCachedOffice(freshOffice);
+          cachedOfficeRef.current = freshOffice;
+
+          // Re-evaluate initial snapshot distance if we have coordinates
+          const coords = latestCoordsRef.current || initialSnapshotRef.current?.coords;
+          if (coords) {
+            const dist = calculateDistanceMeters(
+              coords.lat,
+              coords.lon,
+              freshOffice.latitude,
+              freshOffice.longitude
+            );
+            const inside = dist <= freshOffice.radius_meters;
+
+            const updatedSnapshot: LocationSnapshot = {
+              coords,
+              timestamp: Date.now(),
+              distanceMeters: dist,
+              insideGeofence: inside,
+            };
+            setInitialSnapshot(updatedSnapshot);
+            initialSnapshotRef.current = updatedSnapshot;
+          }
+        }
+        return freshOffice;
+      } catch (err) {
+        console.debug('[LocationWarmup] Could not refresh office:', err);
+        return null;
+      }
+    },
+    [user?.office_id]
+  );
+
   // Background silent warmup routine
   const startBackgroundWarmup = useCallback(async () => {
     if (!isAuthenticated || !user) return;
 
     let targetOffice = cachedOfficeRef.current;
 
-    // 1. Silently fetch assigned office details in background if not already cached
-    if (user.office_id && !targetOffice) {
-      try {
-        const res = await api.get<ApiResponse<Office>>(`/offices/${user.office_id}`);
-        if (res.data?.data) {
-          targetOffice = res.data.data;
-          setCachedOffice(targetOffice);
-          cachedOfficeRef.current = targetOffice;
+    // 1. If assigned office is missing or does not match user's current office_id, fetch fresh!
+    if (user.office_id) {
+      if (!targetOffice || targetOffice.id !== user.office_id) {
+        try {
+          const res = await api.get<ApiResponse<Office>>(`/offices/${user.office_id}`);
+          if (res.data?.data) {
+            targetOffice = res.data.data;
+            setCachedOffice(targetOffice);
+            cachedOfficeRef.current = targetOffice;
+          }
+        } catch (e) {
+          console.debug('[LocationWarmup] Could not pre-fetch office', e);
         }
-      } catch (e) {
-        // Silent failure in background
-        console.debug('[LocationWarmup] Could not pre-fetch office', e);
+      } else {
+        // Silently revalidate in background to capture coordinate/radius edits
+        api.get<ApiResponse<Office>>(`/offices/${user.office_id}`)
+          .then((res) => {
+            if (res.data?.data) {
+              const fresh = res.data.data;
+              if (
+                fresh.latitude !== targetOffice?.latitude ||
+                fresh.longitude !== targetOffice?.longitude ||
+                fresh.radius_meters !== targetOffice?.radius_meters ||
+                fresh.name !== targetOffice?.name
+              ) {
+                setCachedOffice(fresh);
+                cachedOfficeRef.current = fresh;
+              }
+            }
+          })
+          .catch(() => {});
       }
+    } else {
+      setCachedOffice(null);
+      cachedOfficeRef.current = null;
     }
 
     // 2. Silently pre-fetch reference face template in background
@@ -124,7 +216,6 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           });
         }
       } catch (e) {
-        // Silent background cache
         console.debug('[LocationWarmup] Face template pre-fetch omitted', e);
       }
     }
@@ -146,14 +237,15 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           let dist: number | null = null;
           let inside: boolean | null = null;
 
-          if (targetOffice) {
+          const currentTarget = cachedOfficeRef.current || targetOffice;
+          if (currentTarget) {
             dist = calculateDistanceMeters(
               coords.lat,
               coords.lon,
-              targetOffice.latitude,
-              targetOffice.longitude
+              currentTarget.latitude,
+              currentTarget.longitude
             );
-            inside = dist <= targetOffice.radius_meters;
+            inside = dist <= currentTarget.radius_meters;
           }
 
           const snapshot: LocationSnapshot = {
@@ -198,20 +290,67 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
     }
-  }, [isAuthenticated, user, cachedFaceTemplate]);
+  }, [isAuthenticated, user?.office_id, user?.id, cachedFaceTemplate]);
 
-  // Trigger warmup when authenticated
+  // Invalidate and re-fetch if user's assigned office changes
+  useEffect(() => {
+    if (user?.office_id && cachedOfficeRef.current && cachedOfficeRef.current.id !== user.office_id) {
+      setCachedOffice(null);
+      cachedOfficeRef.current = null;
+      setInitialSnapshot(null);
+      initialSnapshotRef.current = null;
+      forceRefreshOffice(user.office_id);
+    }
+  }, [user?.office_id, forceRefreshOffice]);
+
+  // Listen for broadcasted office updates across tabs & components
+  useEffect(() => {
+    const handleOfficeUpdated = async () => {
+      await refreshUser();
+      await forceRefreshOffice();
+    };
+
+    window.addEventListener('workforce:office_updated', handleOfficeUpdated);
+
+    let channel: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        channel = new BroadcastChannel('workforce_office_channel');
+        channel.onmessage = (event) => {
+          if (event.data === 'office_updated') {
+            handleOfficeUpdated();
+          }
+        };
+      } catch {
+        // Ignore BroadcastChannel errors
+      }
+    }
+
+    return () => {
+      window.removeEventListener('workforce:office_updated', handleOfficeUpdated);
+      if (channel) {
+        channel.close();
+      }
+    };
+  }, [refreshUser, forceRefreshOffice]);
+
+  // Trigger warmup when authenticated or clean up when logged out
   useEffect(() => {
     if (isAuthenticated && user) {
       startBackgroundWarmup();
     } else {
-      // Clear watch when logged out
+      // Clear watch and all cached states when logged out
       if (watchIdRef.current !== null && 'geolocation' in navigator) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
+      setCachedOffice(null);
+      cachedOfficeRef.current = null;
+      setCachedFaceTemplate(null);
       setInitialSnapshot(null);
+      initialSnapshotRef.current = null;
       setLatestCoords(null);
+      latestCoordsRef.current = null;
       setIsWarm(false);
     }
 
@@ -221,22 +360,23 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         watchIdRef.current = null;
       }
     };
-  }, [isAuthenticated, user, startBackgroundWarmup]);
+  }, [isAuthenticated, user?.id, user?.office_id, startBackgroundWarmup]);
 
   /**
    * Fast location verification for Check-In / Check-Out:
-   * 1. Re-acquire current location.
-   * 2. Compare against initial snapshot taken when site/app opened.
-   * 3. If similar (<= 50m drift) and initial was in office => INSTANT MATCH to face check (<50ms).
-   * 4. If different => recalculate geofence with fresh location.
+   * 1. Ensure the office coordinates match the user's latest office_id.
+   * 2. Re-acquire current location.
+   * 3. Compare against initial snapshot taken when site/app opened.
+   * 4. If similar (<= 50m drift) and initial was in office => INSTANT MATCH to face check (<50ms).
+   * 5. If different => recalculate geofence with fresh location.
    */
   const getFastVerifiedLocation = useCallback(
     async (forceFresh = false): Promise<VerificationResult> => {
       const startTime = performance.now();
 
-      // Ensure office is available
+      // Ensure office is available and matches user.office_id
       let office = cachedOfficeRef.current;
-      if (!office && user?.office_id) {
+      if ((!office || (user?.office_id && office.id !== user.office_id)) && user?.office_id) {
         try {
           const res = await api.get<ApiResponse<Office>>(`/offices/${user.office_id}`);
           office = res.data.data;
@@ -311,22 +451,28 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const latencyMs = Math.round(performance.now() - startTime);
 
-      // Scenario A: Both are similar AND initial snapshot was confirmed inside office geofence
-      if (isSimilar && initial && initial.insideGeofence === true) {
-        const dist =
-          initial.distanceMeters ??
-          calculateDistanceMeters(freshCoords.lat, freshCoords.lon, office.latitude, office.longitude);
+      // Scenario A: Both are similar AND initial snapshot was confirmed inside office geofence AND matches this office
+      if (isSimilar && initial && initial.insideGeofence === true && initial.distanceMeters !== null) {
+        // Ensure distance is against the correct office
+        const freshDistance = calculateDistanceMeters(
+          freshCoords.lat,
+          freshCoords.lon,
+          office.latitude,
+          office.longitude
+        );
 
-        return {
-          coords: freshCoords,
-          isSimilar: true,
-          insideGeofence: true,
-          distanceMeters: dist,
-          matchType: 'instant_match',
-          driftMeters,
-          office,
-          latencyMs,
-        };
+        if (freshDistance <= office.radius_meters) {
+          return {
+            coords: freshCoords,
+            isSimilar: true,
+            insideGeofence: true,
+            distanceMeters: freshDistance,
+            matchType: 'instant_match',
+            driftMeters,
+            office,
+            latencyMs,
+          };
+        }
       }
 
       // Scenario B: Locations are different OR initial was outside office => recalculate with fresh location
@@ -362,6 +508,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         isWarm,
         getFastVerifiedLocation,
         refreshWarmup: startBackgroundWarmup,
+        forceRefreshOffice,
       }}
     >
       {children}
@@ -382,6 +529,7 @@ export const useLocationWarmup = (): LocationContextType => {
         throw new Error('LocationProvider not mounted');
       },
       refreshWarmup: async () => {},
+      forceRefreshOffice: async () => null,
     };
   }
   return context;

@@ -10,7 +10,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   hasPermission: (permission: PermissionKey) => boolean;
   hasAnyPermission: (permissions: PermissionKey[]) => boolean;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<User | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,22 +22,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [loading, setLoading] = useState(true);
 
-  const refreshUser = useCallback(async () => {
+  const refreshUser = useCallback(async (): Promise<User | null> => {
     try {
       const token = getAccessToken();
       if (!token) {
         setUser(null);
         localStorage.removeItem('user_info');
         setLoading(false);
-        return;
+        return null;
       }
       const res = await api.get<ApiResponse<User>>('/auth/me');
-      setUser(res.data.data);
-      localStorage.setItem('user_info', JSON.stringify(res.data.data));
+      const freshUser = res.data.data;
+      setUser(freshUser);
+      localStorage.setItem('user_info', JSON.stringify(freshUser));
+      return freshUser;
     } catch {
       setUser(null);
       localStorage.removeItem('user_info');
       setAccessToken(null);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -45,6 +48,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     refreshUser();
+
+    const handleOfficeUpdated = () => {
+      refreshUser();
+    };
+
+    window.addEventListener('workforce:office_updated', handleOfficeUpdated);
+    return () => {
+      window.removeEventListener('workforce:office_updated', handleOfficeUpdated);
+    };
   }, [refreshUser]);
 
   const login = async (

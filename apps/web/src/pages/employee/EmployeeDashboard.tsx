@@ -33,7 +33,7 @@ import dayjs from 'dayjs';
 const { Title, Text } = Typography;
 
 export const EmployeeDashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { cachedOffice, initialSnapshot } = useLocationWarmup();
   const navigate = useNavigate();
 
@@ -44,17 +44,22 @@ export const EmployeeDashboard: React.FC = () => {
   const [geoError, setGeoError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Refresh user on mount to avoid stale localStorage data
   useEffect(() => {
-    if (cachedOffice && !office) {
-      setOffice(cachedOffice);
-    }
-  }, [cachedOffice, office]);
+    refreshUser();
+  }, [refreshUser]);
 
   useEffect(() => {
-    if (initialSnapshot?.distanceMeters !== undefined && initialSnapshot?.distanceMeters !== null && userDistance === null) {
+    if (cachedOffice) {
+      setOffice(cachedOffice);
+    }
+  }, [cachedOffice]);
+
+  useEffect(() => {
+    if (initialSnapshot?.distanceMeters !== undefined && initialSnapshot?.distanceMeters !== null) {
       setUserDistance(initialSnapshot.distanceMeters);
     }
-  }, [initialSnapshot, userDistance]);
+  }, [initialSnapshot]);
 
   // Haversine on client for UI convenience
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {

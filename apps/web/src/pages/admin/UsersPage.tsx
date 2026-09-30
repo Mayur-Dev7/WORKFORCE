@@ -29,6 +29,8 @@ import { api } from '../../services/api.js';
 import { User, Office, Department, Role, ApiResponse, PermissionKey } from '@workforce/shared';
 import { PermissionGate } from '../../components/common/PermissionGate.js';
 import { useIsMobile } from '../../hooks/useMediaQuery.js';
+import { useAuth } from '../../context/AuthContext.js';
+import { useLocationWarmup, broadcastOfficeUpdate } from '../../context/LocationContext.js';
 
 const { Title, Text } = Typography;
 
@@ -160,6 +162,8 @@ const EmployeeCard: React.FC<{
 export const UsersPage: React.FC = () => {
   const navigate = useNavigate();
   const isMobile = useIsMobile(768);
+  const { user: currentUser, refreshUser } = useAuth();
+  const { forceRefreshOffice } = useLocationWarmup();
 
   const [users, setUsers] = useState<User[]>([]);
   const [offices, setOffices] = useState<Office[]>([]);
@@ -256,6 +260,11 @@ export const UsersPage: React.FC = () => {
     try {
       await api.patch(`/users/${editingUser.id}`, values);
       message.success('Employee updated successfully');
+      if (currentUser && editingUser.id === currentUser.id) {
+        await refreshUser();
+        await forceRefreshOffice(values.office_id);
+      }
+      broadcastOfficeUpdate();
       setEditModalVisible(false);
       fetchUsers();
     } catch (err: any) {

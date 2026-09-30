@@ -220,5 +220,56 @@ describe('LocationWarmup & Fast Geofence Verification Tests', () => {
       expect(verification.matchType).toBe('outside_geofence');
       expect(verification.distanceMeters).toBeGreaterThan(150);
     });
+
+    it('updates cachedOffice and recalculates distance when forceRefreshOffice is called', async () => {
+      const newMockOffice: any = {
+        id: 'office-home-uuid',
+        name: 'Home Office',
+        latitude: 37.774929,
+        longitude: -122.419416,
+        radius_meters: 200,
+      };
+
+      vi.spyOn(api, 'get').mockImplementation((url: string) => {
+        if (url.includes('/offices/office-home-uuid')) {
+          return Promise.resolve({
+            data: {
+              success: true,
+              data: newMockOffice,
+            },
+          });
+        }
+        if (url.includes('/offices/')) {
+          return Promise.resolve({
+            data: {
+              success: true,
+              data: mockOffice,
+            },
+          });
+        }
+        return Promise.resolve({ data: { success: true, data: null } });
+      });
+
+      const wrapper = ({ children }: { children: React.ReactNode }) => (
+        <LocationProvider>{children}</LocationProvider>
+      );
+
+      const { result } = renderHook(() => useLocationWarmup(), { wrapper });
+
+      await waitFor(() => {
+        expect(result.current.isWarm).toBe(true);
+      });
+
+      expect(result.current.cachedOffice?.name).toBe('Tech Park HQ (San Francisco)');
+
+      // Admin applies new home office to all staff
+      await act(async () => {
+        await result.current.forceRefreshOffice('office-home-uuid');
+      });
+
+      expect(result.current.cachedOffice?.name).toBe('Home Office');
+      expect(result.current.cachedOffice?.id).toBe('office-home-uuid');
+    });
   });
 });
+
