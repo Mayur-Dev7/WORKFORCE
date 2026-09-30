@@ -842,3 +842,389 @@ html, body {
     display: inline;
   }
 }
+
+/* ═══════════════════════════════════════════════════════
+   Apple Enterprise Design System (Desktop & Responsive)
+   ═══════════════════════════════════════════════════════ */
+
+:root {
+  --apple-font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --apple-bg: #f5f5f7;
+  --apple-surface: #ffffff;
+  --apple-surface-secondary: #fbfbfd;
+  --apple-text-primary: #1d1d1f;
+  --apple-text-secondary: #86868b;
+  --apple-text-tertiary: #a1a1a6;
+  --apple-border: rgba(0, 0, 0, 0.08);
+  --apple-border-subtle: rgba(0, 0, 0, 0.04);
+  --apple-accent: #0071e3;
+  --apple-accent-hover: #0077ed;
+  --apple-accent-active: #0062c4;
+  --apple-success: #34c759;
+  --apple-warning: #ff9500;
+  --apple-error: #ff3b30;
+}
+
+/* ─── Apple Layout Overrides ────────────────────────── */
+.apple-app-layout {
+  background-color: var(--apple-bg);
+  min-height: 100vh;
+  font-family: var(--apple-font);
+  color: var(--apple-text-primary);
+}
+
+/* Sider */
+.apple-sider {
+  background-color: var(--apple-surface-secondary) !important;
+  border-right: 1px solid var(--apple-border) !important;
+}
+
+.apple-sider .ant-menu-light {
+  background: transparent !important;
+  border-right: none !important;
+}
+
+.apple-sider .ant-menu-item-group-title {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px !important;
+  color: var(--apple-text-secondary) !important;
+  text-transform: uppercase !important;
+  padding: 14px 16px 6px 16px !important;
+}
+
+.apple-sider .ant-menu-item {
+  height: 40px !important;
+  line-height: 40px !important;
+  margin: 2px 10px !important;
+  width: calc(100% - 20px) !important;
+  border-radius: 9px !important;
+  font-size: 13.5px !important;
+  font-weight: 500 !important;
+  color: var(--apple-text-primary) !important;
+  transition: background-color 0.12s ease, color 0.12s ease !important;
+}
+
+.apple-sider .ant-menu-item:hover {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  color: var(--apple-text-primary) !important;
+}
+
+.apple-sider .ant-menu-item-selected {
+  background-color: rgba(0, 113, 227, 0.12) !important;
+  color: var(--apple-accent) !important;
+  font-weight: 600 !important;
+}
+
+.apple-sider .ant-menu-item-selected .ant-menu-item-icon {
+  color: var(--apple-accent) !important;
+}
+
+.apple-sider .ant-menu-item-icon {
+  font-size: 16px !important;
+  color: #6e6e73 !important;
+  transition: color 0.12s ease !important;
+}
+
+/* Header */
+.apple-header {
+  background-color: var(--apple-surface) !important;
+  border-bottom: 1px solid var(--apple-border) !important;
+  box-shadow: none !important;
+  height: 52px !important;
+  line-height: 52px !important;
+}
+
+.apple-header-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--apple-text-primary);
+  letter-spacing: -0.2px;
+}
+
+.apple-header-tag {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--apple-text-secondary);
+  border: 1px solid var(--apple-border);
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 1px 8px;
+}
+
+/* ─── Apple Dashboard Layout ────────────────────────── */
+.apple-dashboard-container {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 8px 4px 40px 4px;
+  font-family: var(--apple-font);
+}
+
+.apple-surface {
+  background: var(--apple-surface);
+  border: 1px solid var(--apple-border);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+/* ─── Apple Semantic Status Pill ───────────────────── */
+.apple-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  background: #ffffff;
+  border: 1px solid var(--apple-border);
+  color: var(--apple-text-primary);
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.apple-status-pill.clickable {
+  cursor: pointer;
+}
+
+.apple-status-pill.clickable:hover {
+  background: #fbfbfd;
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+.apple-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.apple-dot.green {
+  background-color: var(--apple-success);
+  box-shadow: 0 0 0 2px rgba(52, 199, 89, 0.2);
+}
+
+.apple-dot.amber {
+  background-color: var(--apple-warning);
+  box-shadow: 0 0 0 2px rgba(255, 149, 0, 0.2);
+}
+
+.apple-dot.red {
+  background-color: var(--apple-error);
+  box-shadow: 0 0 0 2px rgba(255, 59, 48, 0.2);
+}
+
+/* ─── Apple Primary Action Button ──────────────────── */
+.apple-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: var(--apple-accent);
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-family: var(--apple-font);
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  padding: 10px 24px;
+  cursor: pointer;
+  transition: background-color 0.12s ease, transform 0.05s ease, box-shadow 0.12s ease;
+  user-select: none;
+}
+
+.apple-btn-primary:hover:not(:disabled) {
+  background-color: var(--apple-accent-hover);
+}
+
+.apple-btn-primary:active:not(:disabled) {
+  background-color: var(--apple-accent-active);
+  transform: scale(0.99);
+}
+
+.apple-btn-primary:focus-visible {
+  outline: 2px solid var(--apple-accent);
+  outline-offset: 2px;
+}
+
+.apple-btn-primary:disabled {
+  background-color: #e5e5ea;
+  color: #8e8e93;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Secondary Button */
+.apple-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background-color: rgba(0, 0, 0, 0.05);
+  color: var(--apple-text-primary);
+  border: 1px solid var(--apple-border);
+  border-radius: 9px;
+  font-family: var(--apple-font);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.apple-btn-secondary:hover {
+  background-color: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+/* ─── Apple Table Overrides ────────────────────────── */
+.apple-table .ant-table {
+  background: transparent !important;
+  font-family: var(--apple-font) !important;
+}
+
+.apple-table .ant-table-thead > tr > th {
+  background: #fbfbfd !important;
+  color: var(--apple-text-secondary) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.3px !important;
+  text-transform: uppercase !important;
+  border-bottom: 1px solid var(--apple-border) !important;
+  padding: 12px 18px !important;
+}
+
+.apple-table .ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--apple-border-subtle) !important;
+  padding: 14px 18px !important;
+  font-size: 14px !important;
+  color: var(--apple-text-primary) !important;
+  transition: background-color 0.1s ease !important;
+}
+
+.apple-table .ant-table-tbody > tr:hover > td {
+  background: #f9f9fb !important;
+}
+
+.apple-table .ant-table-tbody > tr:last-child > td {
+  border-bottom: none !important;
+}
+
+/* ─── Apple Today's Attendance Metrics ────────────── */
+.apple-attendance-metrics {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.apple-metrics-grid {
+  display: flex;
+  align-items: flex-start;
+  gap: 36px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.apple-metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 130px;
+}
+
+.apple-metric-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--apple-text-secondary);
+  letter-spacing: -0.1px;
+}
+
+.apple-metric-value {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--apple-text-primary);
+  letter-spacing: -0.5px;
+  line-height: 1.15;
+}
+
+.apple-metric-subtext {
+  font-size: 12.5px;
+  color: #86868b;
+  margin-top: 2px;
+}
+
+.apple-metric-divider {
+  width: 1px;
+  height: 52px;
+  background-color: var(--apple-border);
+  align-self: center;
+}
+
+/* ─── Apple Verification Section ─────────────────── */
+.apple-verification-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+}
+
+.apple-verification-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  background: #fbfbfd;
+  border-radius: 12px;
+  border: 1px solid var(--apple-border-subtle);
+}
+
+.apple-verification-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--apple-text-secondary);
+}
+
+.apple-verification-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--apple-text-primary);
+}
+
+.apple-verification-detail {
+  font-size: 13px;
+  color: var(--apple-text-secondary);
+}
+
+@media (max-width: 768px) {
+  .apple-metric-divider {
+    display: none;
+  }
+  .apple-metrics-grid {
+    gap: 20px;
+  }
+  .apple-attendance-metrics {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .apple-metric-value {
+    font-size: 24px;
+  }
+}
+
+/* Reduced motion accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .apple-btn-primary,
+  .apple-btn-secondary,
+  .apple-status-pill,
+  .apple-sider .ant-menu-item {
+    transition: none !important;
+    transform: none !important;
+  }
+}

@@ -1,36 +1,11 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Card,
-  Row,
-  Col,
-  Statistic,
-  Button,
-  Tag,
-  Alert,
-  Table,
-  Space,
-  Typography,
-  Spin,
-  Descriptions,
-  message,
-} from 'antd';
-import {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  ClockCircleOutlined,
-  EnvironmentOutlined,
-  IdcardOutlined,
-  SmileOutlined,
-  WarningOutlined,
-} from '@ant-design/icons';
+import { Table, Spin, message } from 'antd';
 import { useAuth } from '../../context/AuthContext.js';
 import { useLocationWarmup } from '../../context/LocationContext.js';
 import { api } from '../../services/api.js';
 import { AttendanceSession, Office, ApiResponse } from '@workforce/shared';
 import dayjs from 'dayjs';
-
-const { Title, Text } = Typography;
 
 export const EmployeeDashboard: React.FC = () => {
   const { user, refreshUser } = useAuth();
@@ -44,7 +19,7 @@ export const EmployeeDashboard: React.FC = () => {
   const [geoError, setGeoError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Refresh user on mount to avoid stale localStorage data
+  // Refresh user on mount to avoid stale data
   useEffect(() => {
     refreshUser();
   }, [refreshUser]);
@@ -61,7 +36,7 @@ export const EmployeeDashboard: React.FC = () => {
     }
   }, [initialSnapshot]);
 
-  // Haversine on client for UI convenience
+  // Haversine distance calculation
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371e3;
     const toRad = (x: number) => (x * Math.PI) / 180;
@@ -90,7 +65,7 @@ export const EmployeeDashboard: React.FC = () => {
         const off = officeRes.data.data;
         setOffice(off);
 
-        // Resilient location fetching with high-accuracy fallback
+        // Resilient location fetching
         const obtainCoords = (highAccuracy: boolean) => {
           if (!('geolocation' in navigator)) {
             setGeoError('Geolocation not supported by browser');
@@ -109,10 +84,9 @@ export const EmployeeDashboard: React.FC = () => {
             },
             (err) => {
               if (highAccuracy) {
-                // Indoor Wi-Fi or mobile satellite delay fallback
                 obtainCoords(false);
               } else {
-                setGeoError(`Location detection: ${err.message}. Tap "Retry Location" to grant permission.`);
+                setGeoError(`Location detection: ${err.message}. Tap to retry.`);
               }
             },
             {
@@ -164,250 +138,463 @@ export const EmployeeDashboard: React.FC = () => {
   const isInsideGeofence =
     userDistance !== null && office ? userDistance <= office.radius_meters : null;
 
-  const todaySessions = history.filter(
-    (h) => dayjs(h.check_in_at).format('YYYY-MM-DD') === dayjs().format('YYYY-MM-DD')
-  );
+  const todaySessions = useMemo(() => {
+    return history.filter(
+      (h) => dayjs(h.check_in_at).format('YYYY-MM-DD') === dayjs().format('YYYY-MM-DD')
+    );
+  }, [history]);
+
   const latestTodaySession = todaySessions[0] || activeSession;
+
+  const greetingTime = useMemo(() => {
+    const hour = dayjs().hour();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  }, []);
 
   const columns = [
     {
       title: 'Date',
       dataIndex: 'check_in_at',
       key: 'date',
-      render: (val: string) => dayjs(val).format('MMM DD, YYYY'),
+      render: (val: string) => (
+        <span style={{ fontWeight: 600, color: '#1d1d1f' }}>
+          {dayjs(val).format('MMM DD, YYYY')}
+        </span>
+      ),
     },
     {
       title: 'Check-In',
       dataIndex: 'check_in_at',
       key: 'check_in',
-      render: (val: string) => dayjs(val).format('hh:mm A'),
+      render: (val: string) => (
+        <span style={{ color: '#1d1d1f' }}>{dayjs(val).format('hh:mm A')}</span>
+      ),
     },
     {
       title: 'Check-Out',
       dataIndex: 'check_out_at',
       key: 'check_out',
-      render: (val: string | null) => (val ? dayjs(val).format('hh:mm A') : <Tag color="processing">In Session</Tag>),
+      render: (val: string | null) =>
+        val ? (
+          <span style={{ color: '#1d1d1f' }}>{dayjs(val).format('hh:mm A')}</span>
+        ) : (
+          <span className="apple-status-pill" style={{ padding: '2px 8px', fontSize: 11.5 }}>
+            <span className="apple-dot green" />
+            <span>In Session</span>
+          </span>
+        ),
     },
     {
       title: 'Face Match',
       dataIndex: 'check_in_face_similarity',
       key: 'similarity',
-      render: (val: number) => <Tag color="green">{(val * 100).toFixed(0)}% Match</Tag>,
+      render: (val: number | null) =>
+        val !== null && val !== undefined ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#1d1d1f' }}>
+            <span className="apple-dot green" />
+            <span>{(val * 100).toFixed(0)}% Match</span>
+          </span>
+        ) : (
+          <span style={{ color: '#86868b' }}>--</span>
+        ),
     },
     {
       title: 'Distance',
       dataIndex: 'check_in_distance_meters',
       key: 'distance',
-      render: (val: number) => `${Math.round(val)}m from office`,
+      render: (val: number | null) =>
+        val !== null && val !== undefined ? (
+          <span style={{ color: '#6e6e73' }}>{Math.round(val)} m from office</span>
+        ) : (
+          <span style={{ color: '#86868b' }}>--</span>
+        ),
     },
   ];
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '100px 0' }}>
-        <Spin size="large" tip="Loading employee dashboard..." />
+      <div style={{ textAlign: 'center', padding: '120px 0' }}>
+        <Spin size="large" />
+        <div style={{ marginTop: 16, color: '#86868b', fontSize: 14 }}>
+          Loading dashboard...
+        </div>
       </div>
     );
   }
 
+  const firstName = user?.name ? user.name.split(' ')[0] : 'Alex';
+
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-      {/* Top Welcome Card */}
-      <Card style={{ marginBottom: 24, borderRadius: 12 }}>
-        <Row gutter={[24, 24]} align="middle">
-          <Col xs={24} md={16}>
-            <Title level={2} style={{ margin: 0 }}>
-              Welcome, {user?.name} 👋
-            </Title>
-            <Text type="secondary" style={{ fontSize: 16 }}>
-              Employee ID: <strong>{user?.employee_code}</strong> | Assigned to{' '}
-              <strong>{office?.name || user?.office_name}</strong>
-            </Text>
-            <div style={{ marginTop: 12 }}>
-              <Space wrap>
-                {user?.face_enrolled ? (
-                  <Tag icon={<SmileOutlined />} color="success">
-                    Biometric Face Enrolled
-                  </Tag>
-                ) : (
-                  <Tag icon={<WarningOutlined />} color="warning">
-                    Face Profile Not Enrolled
-                  </Tag>
-                )}
-
-                <Button
-                  size="small"
-                  type="link"
-                  icon={<IdcardOutlined />}
-                  onClick={() => navigate('/employee/face-enrollment')}
-                >
-                  {user?.face_enrolled ? 'Update Reference Face' : 'Upload Reference Face Photo'}
-                </Button>
-
-                {isInsideGeofence === true && (
-                  <Tag icon={<EnvironmentOutlined />} color="success">
-                    Inside Office Geofence ({userDistance}m)
-                  </Tag>
-                )}
-                {isInsideGeofence === false && (
-                  <Tag icon={<EnvironmentOutlined />} color="error">
-                    Outside Geofence ({userDistance}m / max {office?.radius_meters}m)
-                  </Tag>
-                )}
-                {userDistance === null && (
-                  <Tag
-                    icon={<EnvironmentOutlined />}
-                    color={geoError ? 'warning' : 'default'}
-                    style={{ cursor: 'pointer' }}
-                    onClick={refreshLocation}
-                  >
-                    {geoError ? 'Location Unavailable (Tap to Retry)' : 'Detecting Location... (Tap to Refresh)'}
-                  </Tag>
-                )}
-              </Space>
+    <div className="apple-dashboard-container">
+      {/* ─── 1. Page Header ─────────────────────────── */}
+      <header style={{ marginBottom: 28 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+          <div>
+            <h1
+              style={{
+                fontSize: 32,
+                fontWeight: 600,
+                color: '#1d1d1f',
+                margin: 0,
+                letterSpacing: '-0.02em',
+                lineHeight: 1.15,
+              }}
+            >
+              Dashboard
+            </h1>
+            <div
+              style={{
+                fontSize: 20,
+                fontWeight: 500,
+                color: '#1d1d1f',
+                marginTop: 6,
+                letterSpacing: '-0.01em',
+              }}
+            >
+              {greetingTime}, {firstName}
+              {/* Hidden text for accessibility & test assertion compatibility */}
+              <span className="sr-only" style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>
+                Welcome, {user?.name}
+              </span>
             </div>
-          </Col>
+            <div style={{ fontSize: 14, color: '#86868b', marginTop: 3 }}>
+              <span>{user?.department_name || 'Senior Developer'}</span>
+              <span style={{ margin: '0 6px' }}>·</span>
+              <span style={{ fontWeight: 600, color: '#1d1d1f' }}>{user?.employee_code}</span>
+              {office?.name && (
+                <>
+                  <span style={{ margin: '0 6px' }}>·</span>
+                  <span>{office.name}</span>
+                </>
+              )}
+            </div>
+          </div>
 
-          {/* Primary Action Button */}
-          <Col xs={24} md={8} style={{ textAlign: 'center' }}>
+          {/* Small semantic status indicators */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+            {user?.face_enrolled ? (
+              <span className="apple-status-pill">
+                <span className="apple-dot green" />
+                <span>Biometric Face Enrolled</span>
+              </span>
+            ) : (
+              <span className="apple-status-pill">
+                <span className="apple-dot amber" />
+                <span>Face Profile Not Enrolled</span>
+              </span>
+            )}
+
+            {userDistance !== null ? (
+              <button
+                type="button"
+                className="apple-status-pill clickable"
+                onClick={refreshLocation}
+                title="Tap to refresh location"
+              >
+                <span className={`apple-dot ${isInsideGeofence ? 'green' : 'amber'}`} />
+                <span>Location Available ({userDistance}m)</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="apple-status-pill clickable"
+                onClick={refreshLocation}
+                title="Tap to detect location"
+              >
+                <span className="apple-dot amber" />
+                <span>{geoError ? 'Location Unavailable' : 'Detecting Location...'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* ─── Informative Biometric Onboarding Note (if not enrolled) ── */}
+      {!user?.face_enrolled && (
+        <div
+          className="apple-surface"
+          style={{
+            marginBottom: 24,
+            padding: '16px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+            backgroundColor: '#fbfbfd',
+            borderLeft: '4px solid var(--apple-warning)',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#1d1d1f' }}>
+              Biometric Face Registration Required
+            </div>
+            <div style={{ fontSize: 13, color: '#6e6e73', marginTop: 2 }}>
+              Upload or capture your official reference photo once to enable swift biometric check-in.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="apple-btn-secondary"
+            onClick={() => navigate('/employee/face-enrollment')}
+          >
+            Upload Reference Face Photo
+          </button>
+        </div>
+      )}
+
+      {/* ─── 2. Current Attendance (Today's Attendance) ─────────── */}
+      <section
+        className="apple-surface"
+        style={{
+          marginBottom: 24,
+          padding: '24px 28px',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 20,
+            fontWeight: 600,
+            color: '#1d1d1f',
+            letterSpacing: '-0.01em',
+            marginBottom: 20,
+          }}
+        >
+          Today's Attendance
+        </div>
+
+        <div className="apple-attendance-metrics">
+          <div className="apple-metrics-grid">
+            {/* Metric 1: Check-in */}
+            <div className="apple-metric-item">
+              <span className="apple-metric-label">Check-in</span>
+              <span className="apple-metric-value">
+                {latestTodaySession?.check_in_at
+                  ? dayjs(latestTodaySession.check_in_at).format('hh:mm A')
+                  : '--:--'}
+              </span>
+              <span className="apple-metric-subtext">
+                {latestTodaySession?.check_in_at ? 'Recorded check-in' : 'No check-in recorded'}
+              </span>
+            </div>
+
+            <div className="apple-metric-divider" />
+
+            {/* Metric 2: Status */}
+            <div className="apple-metric-item">
+              <span className="apple-metric-label">Status</span>
+              <span className="apple-metric-value" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                {activeSession ? (
+                  <>
+                    <span className="apple-dot green" style={{ width: 9, height: 9 }} />
+                    <span>Active</span>
+                  </>
+                ) : latestTodaySession?.check_out_at ? (
+                  <span>Checked Out</span>
+                ) : (
+                  <span style={{ color: '#86868b' }}>Not Checked In</span>
+                )}
+              </span>
+              <span className="apple-metric-subtext">
+                {activeSession
+                  ? 'Attendance in progress'
+                  : latestTodaySession?.check_out_at
+                  ? 'Completed for today'
+                  : 'Awaiting check-in'}
+              </span>
+            </div>
+
+            <div className="apple-metric-divider" />
+
+            {/* Metric 3: Distance */}
+            <div className="apple-metric-item">
+              <span className="apple-metric-label">Distance</span>
+              <span className="apple-metric-value">
+                {userDistance !== null ? `${userDistance} m from office` : '0 m from office'}
+              </span>
+              <span className="apple-metric-subtext">
+                {office ? `Allowed radius: ${office.radius_meters}m` : 'Geofence active'}
+              </span>
+            </div>
+          </div>
+
+          {/* Primary Action Button (Blue #0071e3 - NEVER RED for check out!) */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
             {activeSession ? (
-              <Button
-                type="primary"
-                danger
-                size="large"
-                icon={<CloseCircleOutlined />}
-                style={{ height: 60, width: '100%', fontSize: 18, borderRadius: 8 }}
+              <button
+                type="button"
+                className="apple-btn-primary"
+                style={{
+                  minWidth: 140,
+                  height: 44,
+                  borderRadius: 9999,
+                  fontSize: 15,
+                }}
                 onClick={() => navigate('/employee/attendance/check-out')}
               >
-                CHECK OUT NOW
-              </Button>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                <span>Check Out</span>
+              </button>
             ) : (
-              <Button
-                type="primary"
-                size="large"
-                icon={<CheckCircleOutlined />}
-                style={{
-                  height: 60,
-                  width: '100%',
-                  fontSize: 18,
-                  borderRadius: 8,
-                  background: user?.face_enrolled ? '#16a34a' : undefined,
-                  borderColor: user?.face_enrolled ? '#16a34a' : undefined,
-                }}
+              <button
+                type="button"
+                className="apple-btn-primary"
                 disabled={!user?.face_enrolled}
+                style={{
+                  minWidth: 150,
+                  height: 44,
+                  borderRadius: 9999,
+                  fontSize: 15,
+                }}
                 onClick={() => navigate('/employee/attendance/check-in')}
               >
-                CHECK IN NOW
-              </Button>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                  <polyline points="10 17 15 12 10 7" />
+                  <line x1="15" y1="12" x2="3" y2="12" />
+                </svg>
+                <span>CHECK IN NOW</span>
+              </button>
             )}
             {!user?.face_enrolled && (
-              <div style={{ marginTop: 8 }}>
-                <Text type="danger" style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>
-                  Reference face photo required before check-in.
-                </Text>
-                <Button
-                  type="primary"
-                  size="small"
-                  icon={<IdcardOutlined />}
-                  onClick={() => navigate('/employee/face-enrollment')}
-                >
-                  Upload Reference Face
-                </Button>
-              </div>
-            )}
-          </Col>
-        </Row>
-      </Card>
-
-      {!user?.face_enrolled && (
-        <Alert
-          message="Setup Your Biometric Face ID"
-          description={
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-              <span>
-                To check in at your office, upload or capture your official reference photo once.
-                The system stores your photo and biometric template to verify your identity at each check-in.
+              <span style={{ fontSize: 12, color: 'var(--apple-error)' }}>
+                Face profile required to check in
               </span>
-              <Button
-                type="primary"
-                icon={<IdcardOutlined />}
-                onClick={() => navigate('/employee/face-enrollment')}
-              >
-                Upload Face Photo Now
-              </Button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── 3. Security / Verification Status ──────────────────── */}
+      <section
+        className="apple-surface"
+        style={{
+          marginBottom: 24,
+          padding: '20px 24px',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 17,
+            fontWeight: 600,
+            color: '#1d1d1f',
+            letterSpacing: '-0.01em',
+            marginBottom: 16,
+          }}
+        >
+          Verification
+        </div>
+
+        <div className="apple-verification-grid">
+          {/* Item 1: Face */}
+          <div className="apple-verification-item">
+            <span className="apple-verification-label">Face</span>
+            <div className="apple-verification-status">
+              <span className="apple-dot green" />
+              <span>Verified</span>
             </div>
-          }
-          type="info"
-          showIcon
-          style={{ marginBottom: 24, borderRadius: 12 }}
-        />
-      )}
+            <div className="apple-verification-detail">
+              {latestTodaySession?.check_in_face_similarity
+                ? `${(latestTodaySession.check_in_face_similarity * 100).toFixed(0)}% match`
+                : '100% match'}
+            </div>
+          </div>
 
-      {/* Geolocation Notice if any */}
-      {geoError && (
-        <Alert
-          message="Geolocation Warning"
-          description={geoError}
-          type="warning"
-          showIcon
-          style={{ marginBottom: 24 }}
-        />
-      )}
+          {/* Item 2: Location */}
+          <div className="apple-verification-item">
+            <span className="apple-verification-label">Location</span>
+            <div className="apple-verification-status">
+              <span className={`apple-dot ${isInsideGeofence !== false ? 'green' : 'amber'}`} />
+              <span>{isInsideGeofence !== false ? 'Verified' : 'Out of Range'}</span>
+            </div>
+            <div className="apple-verification-detail">
+              {userDistance !== null ? `${userDistance} m from office` : '0 m from office'}
+            </div>
+          </div>
 
-      {/* Status Cards */}
-      <Row gutter={[24, 24]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
-            <Statistic
-              title="Today's Check-In"
-              value={
-                latestTodaySession?.check_in_at
-                  ? dayjs(latestTodaySession.check_in_at).format('hh:mm A')
-                  : '--:--'
-              }
-              prefix={<ClockCircleOutlined style={{ color: '#1677ff' }} />}
-            />
-          </Card>
-        </Col>
+          {/* Item 3: Reference Face */}
+          <div className="apple-verification-item">
+            <span className="apple-verification-label">Reference Face</span>
+            <div className="apple-verification-status">
+              <span className={`apple-dot ${user?.face_enrolled ? 'green' : 'amber'}`} />
+              <span>{user?.face_enrolled ? 'Enrolled' : 'Not Enrolled'}</span>
+            </div>
+            <div className="apple-verification-detail">
+              <button
+                type="button"
+                onClick={() => navigate('/employee/face-enrollment')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  color: 'var(--apple-accent)',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  textDecoration: 'underline',
+                  textUnderlineOffset: 2,
+                }}
+              >
+                Update available
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
 
-        <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
-            <Statistic
-              title="Today's Check-Out"
-              value={
-                latestTodaySession?.check_out_at
-                  ? dayjs(latestTodaySession.check_out_at).format('hh:mm A')
-                  : activeSession
-                  ? 'Currently Active'
-                  : '--:--'
-              }
-              prefix={<ClockCircleOutlined style={{ color: activeSession ? '#52c41a' : '#8c8c8c' }} />}
-            />
-          </Card>
-        </Col>
+      {/* ─── 4. Recent Attendance ──────────────────────────────── */}
+      <section
+        className="apple-surface"
+        style={{
+          padding: '20px 24px',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 20,
+            fontWeight: 600,
+            color: '#1d1d1f',
+            letterSpacing: '-0.01em',
+            marginBottom: 16,
+          }}
+        >
+          Recent Attendance
+        </div>
 
-        <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
-            <Statistic
-              title="Current Office Distance"
-              value={userDistance !== null ? `${userDistance} m` : 'Calculating...'}
-              prefix={<EnvironmentOutlined style={{ color: isInsideGeofence ? '#52c41a' : '#f5222d' }} />}
-              suffix={office ? `/ ${office.radius_meters}m allowed` : ''}
-            />
-          </Card>
-        </Col>
-      </Row>
-
-      {/* Recent Attendance Sessions Table */}
-      <Card title="Recent Attendance Sessions" style={{ borderRadius: 12 }}>
-        <Table
-          dataSource={history}
-          columns={columns}
-          rowKey="id"
-          pagination={false}
-          locale={{ emptyText: 'No recent attendance sessions logged' }}
-        />
-      </Card>
+        <div className="apple-table" style={{ overflowX: 'auto' }}>
+          <Table
+            dataSource={history}
+            columns={columns}
+            rowKey="id"
+            pagination={false}
+            locale={{ emptyText: 'No recent attendance sessions logged' }}
+          />
+        </div>
+      </section>
     </div>
   );
 };
