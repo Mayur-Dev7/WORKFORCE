@@ -49,6 +49,15 @@ export const CheckOutPage: React.FC = () => {
   const [resultError, setResultError] = useState<{ title: string; message: string } | null>(null);
   const [livenessInstruction, setLivenessInstruction] = useState('Position face inside frame');
 
+  // Responsive layout state
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= 768 : false));
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Sync office state with cachedOffice whenever it updates
   useEffect(() => {
     if (cachedOffice) {
@@ -150,13 +159,24 @@ export const CheckOutPage: React.FC = () => {
     };
   }, [user?.office_id, cachedOffice, cachedFaceTemplate, verifyLocation]);
 
+  // Ensure active video element receives the stream and plays whenever stream or layout changes
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      if (videoRef.current.srcObject !== stream) {
+        videoRef.current.srcObject = stream;
+      }
+      videoRef.current.play().catch(console.error);
+      setCameraReady(true);
+    }
+  }, [stream, isMobile]);
+
   // Video frame biometric processing loop
   useEffect(() => {
     let animId: number;
     let frameCount = 0;
 
     const processFrame = async () => {
-      if (videoRef.current && videoRef.current.readyState === 4 && cameraReady) {
+      if (videoRef.current && videoRef.current.readyState >= 2 && cameraReady) {
         frameCount++;
         if (frameCount % 6 === 0) {
           const detection = await analyzeVideoFrame(videoRef.current);
@@ -257,36 +277,37 @@ export const CheckOutPage: React.FC = () => {
 
   return (
     <div className="apple-checkin-wrapper">
-      {/* ─── Mobile View: Focused, no-scroll, Apple HIG ─── */}
-      <div className="apple-checkin-mobile-layout">
-        <MobileVerificationView
-          mode="check-out"
-          videoRef={videoRef}
-          cameraReady={cameraReady}
-          faceDetected={faceDetected}
-          qualityScore={qualityScore}
-          faceMatched={faceMatched}
-          faceSimilarity={faceSimilarity}
-          livenessPassed={livenessPassed}
-          livenessScore={livenessScore}
-          userCoords={userCoords}
-          distanceMeters={distanceMeters}
-          insideGeofence={insideGeofence}
-          locationChecking={locationChecking}
-          locationVerification={locationVerification}
-          user={user}
-          office={office}
-          referenceImage={referenceImage}
-          submitting={submitting}
-          resultError={resultError}
-          onAction={handlePerformCheckOut}
-          onRefreshLocation={() => verifyLocation(true)}
-          onNavigateToEnrollment={handleNavigateToEnrollment}
-        />
-      </div>
-
-      {/* ─── Desktop View: Two-Column Spacious Enterprise Layout ─── */}
-      <div className="apple-checkin-desktop-layout">
+      {isMobile ? (
+        /* ─── Mobile View: Focused, no-scroll, Apple HIG ─── */
+        <div className="apple-checkin-mobile-layout">
+          <MobileVerificationView
+            mode="check-out"
+            videoRef={videoRef}
+            cameraReady={cameraReady}
+            faceDetected={faceDetected}
+            qualityScore={qualityScore}
+            faceMatched={faceMatched}
+            faceSimilarity={faceSimilarity}
+            livenessPassed={livenessPassed}
+            livenessScore={livenessScore}
+            userCoords={userCoords}
+            distanceMeters={distanceMeters}
+            insideGeofence={insideGeofence}
+            locationChecking={locationChecking}
+            locationVerification={locationVerification}
+            user={user}
+            office={office}
+            referenceImage={referenceImage}
+            submitting={submitting}
+            resultError={resultError}
+            onAction={handlePerformCheckOut}
+            onRefreshLocation={() => verifyLocation(true)}
+            onNavigateToEnrollment={handleNavigateToEnrollment}
+          />
+        </div>
+      ) : (
+        /* ─── Desktop View: Two-Column Spacious Enterprise Layout ─── */
+        <div className="apple-checkin-desktop-layout">
         <header className="apple-checkin-header">
           <h1 className="apple-checkin-title">Employee Check-Out</h1>
           <p className="apple-checkin-subtitle">
@@ -367,6 +388,7 @@ export const CheckOutPage: React.FC = () => {
           />
         </div>
       </div>
+      )}
     </div>
   );
 };

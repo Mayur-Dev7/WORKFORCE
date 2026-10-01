@@ -34,6 +34,7 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
       <video
         ref={videoRef as any}
         playsInline
+        autoPlay
         muted
         className="apple-camera-video"
       />

@@ -196,6 +196,7 @@ export const MobileVerificationView: React.FC<MobileVerificationViewProps> = ({
         <video
           ref={videoRef as any}
           playsInline
+          autoPlay
           muted
           className="apple-mobile-camera-video"
         />

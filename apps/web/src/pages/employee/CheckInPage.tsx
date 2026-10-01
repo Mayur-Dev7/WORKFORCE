@@ -49,6 +49,15 @@ export const CheckInPage: React.FC = () => {
   const [resultError, setResultError] = useState<{ title: string; message: string } | null>(null);
   const [livenessInstruction, setLivenessInstruction] = useState('Position face inside frame');
 
+  // Responsive layout state
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= 768 : false));
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Sync office state with cachedOffice whenever it updates
   useEffect(() => {
     if (cachedOffice) {
@@ -150,13 +159,24 @@ export const CheckInPage: React.FC = () => {
     };
   }, [user?.office_id, cachedOffice, cachedFaceTemplate, verifyLocation]);
 
+  // Ensure active video element receives the stream and plays whenever stream or layout changes
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      if (videoRef.current.srcObject !== stream) {
+        videoRef.current.srcObject = stream;
+      }
+      videoRef.current.play().catch(console.error);
+      setCameraReady(true);
+    }
+  }, [stream, isMobile]);
+
   // Video frame biometric processing loop
   useEffect(() => {
     let animId: number;
     let frameCount = 0;
 
     const processFrame = async () => {
-      if (videoRef.current && videoRef.current.readyState === 4 && cameraReady) {
+      if (videoRef.current && videoRef.current.readyState >= 2 && cameraReady) {
         frameCount++;
         if (frameCount % 6 === 0) {
           const detection = await analyzeVideoFrame(videoRef.current);
@@ -258,97 +278,13 @@ export const CheckInPage: React.FC = () => {
 
   return (
     <div className="apple-checkin-wrapper">
-      {/* ─── Mobile View: Focused, no-scroll, Apple HIG ─── */}
-      <div className="apple-checkin-mobile-layout">
-        <MobileVerificationView
-          mode="check-in"
-          videoRef={videoRef}
-          cameraReady={cameraReady}
-          faceDetected={faceDetected}
-          qualityScore={qualityScore}
-          faceMatched={faceMatched}
-          faceSimilarity={faceSimilarity}
-          livenessPassed={livenessPassed}
-          livenessScore={livenessScore}
-          userCoords={userCoords}
-          distanceMeters={distanceMeters}
-          insideGeofence={insideGeofence}
-          locationChecking={locationChecking}
-          locationVerification={locationVerification}
-          user={user}
-          office={office}
-          referenceImage={referenceImage}
-          submitting={submitting}
-          resultError={resultError}
-          onAction={handlePerformCheckIn}
-          onRefreshLocation={() => verifyLocation(true)}
-          onNavigateToEnrollment={handleNavigateToEnrollment}
-        />
-      </div>
-
-      {/* ─── Desktop View: Two-Column Spacious Enterprise Layout ─── */}
-      <div className="apple-checkin-desktop-layout">
-        <header className="apple-checkin-header">
-          <h1 className="apple-checkin-title">Employee Check-In</h1>
-          <p className="apple-checkin-subtitle">
-            Face verification and office location are checked before attendance is recorded.
-          </p>
-          <div className="apple-checkin-office-chip">
-            <span>Assigned Office:</span>
-            <strong>{office?.name || 'Locating office...'}</strong>
-            <span>· Allowed radius {office?.radius_meters || 150} m</span>
-          </div>
-        </header>
-
-        {resultError && (
-          <CompactAlert
-            type="error"
-            title={resultError.title}
-            message={resultError.message}
-            actionText={resultError.title.includes('FACE_MISMATCH') ? 'Update Face' : 'Try Again'}
-            onAction={() => {
-              if (resultError.title.includes('FACE_MISMATCH')) {
-                handleNavigateToEnrollment();
-              } else {
-                setResultError(null);
-                verifyLocation(true);
-              }
-            }}
-          />
-        )}
-
-        <div className="apple-checkin-grid">
-          {/* Left Column (~60%): Camera + Face Match Feedback + Reference Face */}
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <CameraFeed
-              videoRef={videoRef}
-              cameraReady={cameraReady}
-              faceDetected={faceDetected}
-              faceMatched={faceMatched}
-              livenessPassed={livenessPassed}
-              livenessInstruction={livenessInstruction}
-            />
-
-            <FaceMatchFeedback
-              faceDetected={faceDetected}
-              faceMatched={faceMatched}
-              faceSimilarity={faceSimilarity}
-              expectedName={user?.name}
-              expectedCode={user?.employee_code}
-              faceEnrolled={user?.face_enrolled}
-            />
-
-            <ReferenceFaceCard
-              referenceImage={referenceImage}
-              faceEnrolled={Boolean(user?.face_enrolled)}
-              onUpdate={handleNavigateToEnrollment}
-            />
-          </div>
-
-          {/* Right Column (~40%): Verification Sequence & Primary Action */}
-          <VerificationPanel
-            user={user}
-            office={office}
+      {isMobile ? (
+        /* ─── Mobile View: Focused, no-scroll, Apple HIG ─── */
+        <div className="apple-checkin-mobile-layout">
+          <MobileVerificationView
+            mode="check-in"
+            videoRef={videoRef}
+            cameraReady={cameraReady}
             faceDetected={faceDetected}
             qualityScore={qualityScore}
             faceMatched={faceMatched}
@@ -360,13 +296,99 @@ export const CheckInPage: React.FC = () => {
             insideGeofence={insideGeofence}
             locationChecking={locationChecking}
             locationVerification={locationVerification}
+            user={user}
+            office={office}
+            referenceImage={referenceImage}
             submitting={submitting}
-            onCheckIn={handlePerformCheckIn}
+            resultError={resultError}
+            onAction={handlePerformCheckIn}
             onRefreshLocation={() => verifyLocation(true)}
             onNavigateToEnrollment={handleNavigateToEnrollment}
           />
         </div>
-      </div>
+      ) : (
+        /* ─── Desktop View: Two-Column Spacious Enterprise Layout ─── */
+        <div className="apple-checkin-desktop-layout">
+          <header className="apple-checkin-header">
+            <h1 className="apple-checkin-title">Employee Check-In</h1>
+            <p className="apple-checkin-subtitle">
+              Face verification and office location are checked before attendance is recorded.
+            </p>
+            <div className="apple-checkin-office-chip">
+              <span>Assigned Office:</span>
+              <strong>{office?.name || 'Locating office...'}</strong>
+              <span>· Allowed radius {office?.radius_meters || 150} m</span>
+            </div>
+          </header>
+
+          {resultError && (
+            <CompactAlert
+              type="error"
+              title={resultError.title}
+              message={resultError.message}
+              actionText={resultError.title.includes('FACE_MISMATCH') ? 'Update Face' : 'Try Again'}
+              onAction={() => {
+                if (resultError.title.includes('FACE_MISMATCH')) {
+                  handleNavigateToEnrollment();
+                } else {
+                  setResultError(null);
+                  verifyLocation(true);
+                }
+              }}
+            />
+          )}
+
+          <div className="apple-checkin-grid">
+            {/* Left Column (~60%): Camera + Face Match Feedback + Reference Face */}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <CameraFeed
+                videoRef={videoRef}
+                cameraReady={cameraReady}
+                faceDetected={faceDetected}
+                faceMatched={faceMatched}
+                livenessPassed={livenessPassed}
+                livenessInstruction={livenessInstruction}
+              />
+
+              <FaceMatchFeedback
+                faceDetected={faceDetected}
+                faceMatched={faceMatched}
+                faceSimilarity={faceSimilarity}
+                expectedName={user?.name}
+                expectedCode={user?.employee_code}
+                faceEnrolled={user?.face_enrolled}
+              />
+
+              <ReferenceFaceCard
+                referenceImage={referenceImage}
+                faceEnrolled={Boolean(user?.face_enrolled)}
+                onUpdate={handleNavigateToEnrollment}
+              />
+            </div>
+
+            {/* Right Column (~40%): Verification Sequence & Primary Action */}
+            <VerificationPanel
+              user={user}
+              office={office}
+              faceDetected={faceDetected}
+              qualityScore={qualityScore}
+              faceMatched={faceMatched}
+              faceSimilarity={faceSimilarity}
+              livenessPassed={livenessPassed}
+              livenessScore={livenessScore}
+              userCoords={userCoords}
+              distanceMeters={distanceMeters}
+              insideGeofence={insideGeofence}
+              locationChecking={locationChecking}
+              locationVerification={locationVerification}
+              submitting={submitting}
+              onCheckIn={handlePerformCheckIn}
+              onRefreshLocation={() => verifyLocation(true)}
+              onNavigateToEnrollment={handleNavigateToEnrollment}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
