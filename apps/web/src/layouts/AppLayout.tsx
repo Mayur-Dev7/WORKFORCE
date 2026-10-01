@@ -408,18 +408,11 @@ export const AppLayout: React.FC = () => {
             <span>Home</span>
           </button>
           <button
-            className={`mob-nav-btn mob-checkin ${location.pathname === '/employee/attendance/check-in' ? 'mob-active' : ''}`}
+            className={`mob-nav-btn ${location.pathname.startsWith('/employee/attendance/check-in') || location.pathname.startsWith('/employee/attendance/check-out') ? 'mob-active' : ''}`}
             onClick={() => navigate('/employee/attendance/check-in')}
           >
             <CheckCircleOutlined />
-            <span>Check In</span>
-          </button>
-          <button
-            className={`mob-nav-btn mob-checkout ${location.pathname === '/employee/attendance/check-out' ? 'mob-active' : ''}`}
-            onClick={() => navigate('/employee/attendance/check-out')}
-          >
-            <CloseCircleOutlined />
-            <span>Check Out</span>
+            <span>Attendance</span>
           </button>
           <button
             className={`mob-nav-btn ${location.pathname === '/employee/attendance' ? 'mob-active' : ''}`}
@@ -434,6 +427,13 @@ export const AppLayout: React.FC = () => {
           >
             <CalendarOutlined />
             <span>Leave</span>
+          </button>
+          <button
+            className={`mob-nav-btn ${location.pathname.startsWith('/employee/face-enrollment') ? 'mob-active' : ''}`}
+            onClick={() => navigate('/employee/face-enrollment')}
+          >
+            <UserOutlined />
+            <span>Profile</span>
           </button>
         </nav>
       </Layout>

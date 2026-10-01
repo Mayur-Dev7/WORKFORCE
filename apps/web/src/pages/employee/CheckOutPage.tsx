@@ -12,6 +12,7 @@ import { CameraFeed } from '../../components/checkin/CameraFeed.js';
 import { FaceMatchFeedback } from '../../components/checkin/FaceMatchFeedback.js';
 import { ReferenceFaceCard } from '../../components/checkin/ReferenceFaceCard.js';
 import { VerificationPanel } from '../../components/checkin/VerificationPanel.js';
+import { MobileVerificationView } from '../../components/checkin/MobileVerificationView.js';
 
 export const CheckOutPage: React.FC = () => {
   const { user, refreshUser } = useAuth();
@@ -256,71 +257,12 @@ export const CheckOutPage: React.FC = () => {
 
   return (
     <div className="apple-checkin-wrapper">
-      {/* ─── 1. Page Header (Clean, typography-driven, no huge card wrapper) ─── */}
-      <header className="apple-checkin-header">
-        <h1 className="apple-checkin-title">Employee Check-Out</h1>
-        <p className="apple-checkin-subtitle">
-          Face verification and office location are checked before closing your attendance session.
-        </p>
-        <div className="apple-checkin-office-chip">
-          <span>Assigned Office:</span>
-          <strong>{office?.name || 'Locating office...'}</strong>
-          <span>· Allowed radius {office?.radius_meters || 150} m</span>
-        </div>
-      </header>
-
-      {/* ─── 2. Compact Inline System Alert (Only when error occurs) ─── */}
-      {resultError && (
-        <CompactAlert
-          type="error"
-          title={resultError.title}
-          message={resultError.message}
-          actionText={resultError.title.includes('FACE_MISMATCH') ? 'Update Face' : 'Try Again'}
-          onAction={() => {
-            if (resultError.title.includes('FACE_MISMATCH')) {
-              handleNavigateToEnrollment();
-            } else {
-              setResultError(null);
-              verifyLocation(true);
-            }
-          }}
-        />
-      )}
-
-      {/* ─── 3. Main Verification Area (Two-Column Desktop Layout) ─── */}
-      <div className="apple-checkin-grid">
-        {/* Left Column (~60%): Camera + Face Match Feedback + Reference Face */}
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <CameraFeed
-            videoRef={videoRef}
-            cameraReady={cameraReady}
-            faceDetected={faceDetected}
-            faceMatched={faceMatched}
-            livenessPassed={livenessPassed}
-            livenessInstruction={livenessInstruction}
-          />
-
-          <FaceMatchFeedback
-            faceDetected={faceDetected}
-            faceMatched={faceMatched}
-            faceSimilarity={faceSimilarity}
-            expectedName={user?.name}
-            expectedCode={user?.employee_code}
-            faceEnrolled={user?.face_enrolled}
-          />
-
-          <ReferenceFaceCard
-            referenceImage={referenceImage}
-            faceEnrolled={Boolean(user?.face_enrolled)}
-            onUpdate={handleNavigateToEnrollment}
-          />
-        </div>
-
-        {/* Right Column (~40%): Verification Sequence & Primary Action */}
-        <VerificationPanel
+      {/* ─── Mobile View: Focused, no-scroll, Apple HIG ─── */}
+      <div className="apple-checkin-mobile-layout">
+        <MobileVerificationView
           mode="check-out"
-          user={user}
-          office={office}
+          videoRef={videoRef}
+          cameraReady={cameraReady}
           faceDetected={faceDetected}
           qualityScore={qualityScore}
           faceMatched={faceMatched}
@@ -332,11 +274,98 @@ export const CheckOutPage: React.FC = () => {
           insideGeofence={insideGeofence}
           locationChecking={locationChecking}
           locationVerification={locationVerification}
+          user={user}
+          office={office}
+          referenceImage={referenceImage}
           submitting={submitting}
-          onCheckOut={handlePerformCheckOut}
+          resultError={resultError}
+          onAction={handlePerformCheckOut}
           onRefreshLocation={() => verifyLocation(true)}
           onNavigateToEnrollment={handleNavigateToEnrollment}
         />
+      </div>
+
+      {/* ─── Desktop View: Two-Column Spacious Enterprise Layout ─── */}
+      <div className="apple-checkin-desktop-layout">
+        <header className="apple-checkin-header">
+          <h1 className="apple-checkin-title">Employee Check-Out</h1>
+          <p className="apple-checkin-subtitle">
+            Face verification and office location are checked before closing your attendance session.
+          </p>
+          <div className="apple-checkin-office-chip">
+            <span>Assigned Office:</span>
+            <strong>{office?.name || 'Locating office...'}</strong>
+            <span>· Allowed radius {office?.radius_meters || 150} m</span>
+          </div>
+        </header>
+
+        {resultError && (
+          <CompactAlert
+            type="error"
+            title={resultError.title}
+            message={resultError.message}
+            actionText={resultError.title.includes('FACE_MISMATCH') ? 'Update Face' : 'Try Again'}
+            onAction={() => {
+              if (resultError.title.includes('FACE_MISMATCH')) {
+                handleNavigateToEnrollment();
+              } else {
+                setResultError(null);
+                verifyLocation(true);
+              }
+            }}
+          />
+        )}
+
+        <div className="apple-checkin-grid">
+          {/* Left Column (~60%): Camera + Face Match Feedback + Reference Face */}
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <CameraFeed
+              videoRef={videoRef}
+              cameraReady={cameraReady}
+              faceDetected={faceDetected}
+              faceMatched={faceMatched}
+              livenessPassed={livenessPassed}
+              livenessInstruction={livenessInstruction}
+            />
+
+            <FaceMatchFeedback
+              faceDetected={faceDetected}
+              faceMatched={faceMatched}
+              faceSimilarity={faceSimilarity}
+              expectedName={user?.name}
+              expectedCode={user?.employee_code}
+              faceEnrolled={user?.face_enrolled}
+            />
+
+            <ReferenceFaceCard
+              referenceImage={referenceImage}
+              faceEnrolled={Boolean(user?.face_enrolled)}
+              onUpdate={handleNavigateToEnrollment}
+            />
+          </div>
+
+          {/* Right Column (~40%): Verification Sequence & Primary Action */}
+          <VerificationPanel
+            mode="check-out"
+            user={user}
+            office={office}
+            faceDetected={faceDetected}
+            qualityScore={qualityScore}
+            faceMatched={faceMatched}
+            faceSimilarity={faceSimilarity}
+            livenessPassed={livenessPassed}
+            livenessScore={livenessScore}
+            userCoords={userCoords}
+            distanceMeters={distanceMeters}
+            insideGeofence={insideGeofence}
+            locationChecking={locationChecking}
+            locationVerification={locationVerification}
+            submitting={submitting}
+            onCheckOut={handlePerformCheckOut}
+            onRefreshLocation={() => verifyLocation(true)}
+            onNavigateToEnrollment={handleNavigateToEnrollment}
+          />
+        </div>
       </div>
     </div>
   );
