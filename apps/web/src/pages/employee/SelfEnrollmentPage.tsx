@@ -1,36 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { message } from 'antd';
 import {
-  Card,
-  Typography,
-  Tabs,
-  Segmented,
-  Upload,
-  Button,
-  Alert,
-  Space,
-  Progress,
-  message,
-  Divider,
-  Avatar,
-  Row,
-  Col,
-  Tag,
-  Badge,
-  Tooltip,
-} from 'antd';
-import {
-  UploadOutlined,
   CameraOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
+  UploadOutlined,
+  CheckOutlined,
+  CloseOutlined,
   DeleteOutlined,
-  SyncOutlined,
-  InboxOutlined,
-  IdcardOutlined,
+  PlusOutlined,
+  UndoOutlined,
+  LoadingOutlined,
+  RightOutlined,
+  DownOutlined,
+  UserOutlined,
   ArrowRightOutlined,
-  RedoOutlined,
-  SafetyCertificateOutlined,
-  SmileOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.js';
@@ -42,9 +24,6 @@ import {
   buildCentroidTemplate,
 } from '../../services/face.client.js';
 
-const { Title, Text, Paragraph } = Typography;
-const { Dragger } = Upload;
-
 interface FaceSample {
   id: string;
   previewUrl: string;
@@ -54,11 +33,11 @@ interface FaceSample {
 }
 
 const GUIDED_POSES = [
-  { step: 1, title: 'Frontal Neutral', desc: 'Look directly at camera with a natural, relaxed expression' },
-  { step: 2, title: 'Frontal Smile', desc: 'Look directly at camera with a slight natural smile' },
-  { step: 3, title: 'Turn Slightly Left', desc: 'Turn head ~15° to your left so right cheek is visible' },
-  { step: 4, title: 'Turn Slightly Right', desc: 'Turn head ~15° to your right so left cheek is visible' },
-  { step: 5, title: 'Slight Tilt Up/Down', desc: 'Tilt your chin slightly up or down to capture vertical angle' },
+  { step: 1, title: 'Frontal Neutral', shortTitle: 'Frontal', desc: 'Look directly at the camera with a relaxed expression' },
+  { step: 2, title: 'Frontal Smile', shortTitle: 'Frontal Smile', desc: 'Look directly at camera with a slight natural smile' },
+  { step: 3, title: 'Turn Slightly Left', shortTitle: 'Slight left', desc: 'Turn head ~15° to your left so right cheek is visible' },
+  { step: 4, title: 'Turn Slightly Right', shortTitle: 'Slight right', desc: 'Turn head ~15° to your right so left cheek is visible' },
+  { step: 5, title: 'Slight Tilt Up/Down', shortTitle: 'Slight up/down', desc: 'Tilt your chin slightly up or down to capture vertical angle' },
 ];
 
 export const SelfEnrollmentPage: React.FC = () => {
@@ -71,15 +50,17 @@ export const SelfEnrollmentPage: React.FC = () => {
 
   // Current enrolled face
   const [currentReferenceFace, setCurrentReferenceFace] = useState<string | null>(null);
-  const [loadingCurrentFace, setLoadingCurrentFace] = useState(false);
+  const [, setLoadingCurrentFace] = useState(false);
 
   // Uploaded samples (up to 5 photos)
   const [uploadSamples, setUploadSamples] = useState<FaceSample[]>([]);
   const [uploadProcessing, setUploadProcessing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Guided camera samples (up to 5 poses)
   const [cameraSamples, setCameraSamples] = useState<FaceSample[]>([]);
   const [currentPoseIdx, setCurrentPoseIdx] = useState(0);
+  const [lastCapturedPose, setLastCapturedPose] = useState<string | null>(null);
 
   // Camera video stream
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -92,6 +73,10 @@ export const SelfEnrollmentPage: React.FC = () => {
   const [liveFaceDetected, setLiveFaceDetected] = useState(false);
   const [liveQuality, setLiveQuality] = useState(0);
   const [capturingPose, setCapturingPose] = useState(false);
+
+  // Technical details disclosure
+  const [techOpen, setTechOpen] = useState(false);
+  const [lastDetectedFormat, setLastDetectedFormat] = useState<string>('Standard');
 
   // Fetch current enrolled face if user.face_enrolled is true
   useEffect(() => {
@@ -204,56 +189,61 @@ export const SelfEnrollmentPage: React.FC = () => {
   }, [cameraActive, cameraReady]);
 
   // Tab switch handler
-  const handleTabChange = (key: string) => {
+  const handleTabChange = (key: 'upload' | 'camera') => {
     if (key === 'camera') {
       startCamera();
     } else {
       stopCamera();
     }
-    setActiveTab(key as 'upload' | 'camera');
+    setActiveTab(key);
   };
 
   // ---------------------------------------------------------------------------
   // Upload Handler (Supports multiple files up to 5)
   // ---------------------------------------------------------------------------
-  const handleFileUpload = async (file: File) => {
+  const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
     if (uploadSamples.length >= 5) {
-      message.warning('Maximum of 5 photos reached. Remove a photo to upload another.');
-      return false;
+      message.warning('Maximum of 5 photos reached.');
+      return;
     }
 
     setUploadProcessing(true);
-    setStatusMessage('Checking image format & converting HEIC/JPG...');
+    setStatusMessage('Analyzing photo...');
 
-    try {
-      const result = await analyzeImageFile(file, (msg) => setStatusMessage(msg));
-      const newSample: FaceSample = {
-        id: `upload-${Date.now()}-${Math.random()}`,
-        previewUrl: result.previewUrl,
-        embedding: result.embedding,
-        quality: Math.round(result.quality * 100),
-        label: `Photo ${uploadSamples.length + 1} (${result.converted ? 'Converted JPG' : 'JPG'})`,
-      };
-
-      setUploadSamples((prev) => {
-        const next = [...prev, newSample].slice(0, 5);
-        return next;
-      });
-
-      if (result.converted) {
-        message.success('Mobile HEIC photo converted to JPG and face detected!');
-      } else {
-        message.success('Face detected in uploaded image!');
+    for (let i = 0; i < files.length; i++) {
+      if (uploadSamples.length + i >= 5) {
+        message.warning('Maximum 5 photos reached.');
+        break;
       }
-      setStatusMessage(null);
-    } catch (err: any) {
-      message.error(err.message || 'Failed to detect face in photo');
-      setStatusMessage(null);
-    } finally {
-      setUploadProcessing(false);
+      const file = files[i];
+      try {
+        const result = await analyzeImageFile(file, (msg) => setStatusMessage(msg));
+        setLastDetectedFormat(result.converted ? 'HEIC Converted' : file.type || 'JPG');
+        const newSample: FaceSample = {
+          id: `upload-${Date.now()}-${Math.random()}`,
+          previewUrl: result.previewUrl,
+          embedding: result.embedding,
+          quality: Math.round(result.quality * 100),
+          label: `Photo ${uploadSamples.length + i + 1}`,
+        };
+
+        setUploadSamples((prev) => {
+          if (prev.length >= 5) return prev;
+          return [...prev, newSample];
+        });
+      } catch (err: any) {
+        message.error(err.message || 'No face detected in selected photo');
+      }
     }
 
-    return false; // Prevent automatic antd upload POST
+    setUploadProcessing(false);
+    setStatusMessage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleRemoveUploadSample = (id: string) => {
@@ -270,36 +260,37 @@ export const SelfEnrollmentPage: React.FC = () => {
     try {
       const detection = await analyzeVideoFrame(videoRef.current);
       if (detection.faceCount === 0) {
-        message.warning('No face detected. Please position your face clearly in the oval frame.');
+        message.warning('Position your face inside the frame');
         setCapturingPose(false);
         return;
       }
       if (detection.faceCount > 1) {
-        message.warning('Multiple faces detected. Please ensure only one person is in frame.');
+        message.warning('Multiple faces detected. Keep only your face in frame.');
         setCapturingPose(false);
         return;
       }
 
       const previewBase64 = captureVideoFrameAsBase64(videoRef.current);
-      const poseInfo = GUIDED_POSES[currentPoseIdx] || { title: `Pose ${cameraSamples.length + 1}` };
+      const poseInfo = GUIDED_POSES[currentPoseIdx] || { title: `Pose ${cameraSamples.length + 1}`, shortTitle: `Pose ${cameraSamples.length + 1}` };
 
       const newSample: FaceSample = {
         id: `camera-pose-${currentPoseIdx + 1}-${Date.now()}`,
         previewUrl: previewBase64,
         embedding: detection.embedding,
         quality: Math.round(detection.quality * 100),
-        label: `Pose ${currentPoseIdx + 1}: ${poseInfo.title}`,
+        label: poseInfo.shortTitle || poseInfo.title,
       };
 
       const updated = [...cameraSamples, newSample];
       setCameraSamples(updated);
-      message.success(`Captured ${poseInfo.title}! (${updated.length}/5 poses)`);
+      setLastCapturedPose(poseInfo.shortTitle || poseInfo.title);
+      setTimeout(() => setLastCapturedPose(null), 2000);
 
       if (currentPoseIdx < GUIDED_POSES.length - 1) {
         setCurrentPoseIdx((prev) => prev + 1);
       }
-    } catch (err: any) {
-      message.error('Failed to capture pose from camera');
+    } catch {
+      message.error('Failed to capture pose');
     } finally {
       setCapturingPose(false);
     }
@@ -308,6 +299,7 @@ export const SelfEnrollmentPage: React.FC = () => {
   const handleResetCameraPoses = () => {
     setCameraSamples([]);
     setCurrentPoseIdx(0);
+    setLastCapturedPose(null);
   };
 
   // ---------------------------------------------------------------------------
@@ -332,14 +324,12 @@ export const SelfEnrollmentPage: React.FC = () => {
         referenceImage: primaryPhoto,
       });
 
-      message.success(
-        `Successfully enrolled ${samplesToSave.length}-pose centroid biometric template! Check-in will now match smoothly across expressions and angles.`
-      );
+      message.success('Face reference updated');
       stopCamera();
       await refreshUser();
       navigate('/employee/attendance/check-in');
     } catch (err: any) {
-      message.error(err.response?.data?.error?.message || 'Failed to save biometric template');
+      message.error(err.response?.data?.error?.message || 'Failed to save face reference');
     } finally {
       setSubmitting(false);
     }
@@ -347,420 +337,464 @@ export const SelfEnrollmentPage: React.FC = () => {
 
   const currentPose = GUIDED_POSES[currentPoseIdx] || GUIDED_POSES[0];
 
+  // Camera Outline State
+  const cameraOutlineState = cameraError
+    ? 'error'
+    : liveFaceDetected && liveQuality >= 0.65
+    ? 'ready'
+    : liveFaceDetected
+    ? 'detected'
+    : 'neutral';
+
+  // Camera Guidance Text
+  const getCameraGuidanceText = () => {
+    if (capturingPose) return 'Capturing...';
+    if (lastCapturedPose) return `✓ ${lastCapturedPose} captured`;
+    if (!cameraReady) return 'Starting camera...';
+    if (!liveFaceDetected) return 'Position your face inside the frame';
+    if (liveQuality < 0.6) return 'Center your face';
+    return '✓ Face detected';
+  };
+
   return (
-    <div style={{ maxWidth: 880, margin: '0 auto', padding: '10px 8px 30px' }}>
-      <Card
-        style={{ borderRadius: 16, overflow: 'hidden' }}
-        bodyStyle={{ padding: '16px 14px' }}
-      >
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          {/* Header */}
-          <div>
-            <Title level={4} style={{ margin: '0 0 4px', fontSize: 18 }}>
-              <IdcardOutlined style={{ marginRight: 8, color: '#1677ff' }} />
-              Biometric Face Registration
-            </Title>
-            <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.4, display: 'block' }}>
-              Enroll <strong>1 to 5 face photos</strong> to create your reference template for biometric attendance verification.
-            </Text>
-          </div>
+    <div className="apple-face-reg-container">
+      {/* ─── Page Title Header (Clean, HIG hierarchy) ─── */}
+      <div className="apple-face-reg-header">
+        <h1 className="apple-face-reg-title">Face Registration</h1>
+        <p className="apple-face-reg-subtitle">
+          Create or update your face reference for secure attendance verification.
+        </p>
+      </div>
 
-          {/* Current Enrolled Status Banner */}
+      {/* ─── Reference Face Status (Simplified, no technical clutter) ─── */}
+      {/* Only show when not in active camera mode to prioritize the live camera */}
+      {activeTab !== 'camera' && (
+        <>
           {user?.face_enrolled ? (
-            <Alert
-              type="success"
-              showIcon
-              message={
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <Text strong style={{ fontSize: 13 }}>Reference Face Active</Text>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    Your biometric identity is registered. You can update your reference photos below anytime.
-                  </Text>
-                  <div>
-                    <Button
-                      type="primary"
-                      size="small"
-                      icon={<ArrowRightOutlined />}
-                      onClick={() => navigate('/employee/attendance/check-in')}
-                    >
-                      Go to Check-In
-                    </Button>
+            <div className="apple-face-reg-ref-card">
+              <div className="apple-face-reg-ref-row">
+                {currentReferenceFace ? (
+                  <img
+                    src={currentReferenceFace}
+                    alt="Reference face"
+                    className="apple-face-reg-ref-thumb"
+                  />
+                ) : (
+                  <div className="apple-face-reg-ref-thumb-placeholder">
+                    <UserOutlined />
                   </div>
-                </div>
-              }
-            />
-          ) : (
-            <Alert
-              type="warning"
-              showIcon
-              message="Action Required: Reference Face Missing"
-              description="Please upload or capture your photo to enable attendance check-in."
-            />
-          )}
-
-          {/* Currently Stored Reference Face Card */}
-          {currentReferenceFace && (
-            <Card
-              size="small"
-              style={{ background: '#f6ffed', borderColor: '#b7eb8f', borderRadius: 12 }}
-              bodyStyle={{ padding: '10px 12px' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <Avatar
-                  shape="square"
-                  size={56}
-                  src={currentReferenceFace}
-                  style={{ border: '2px solid #52c41a', objectFit: 'cover', borderRadius: 8, flexShrink: 0 }}
-                />
+                )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <Text strong style={{ fontSize: 14 }}>{user?.name}</Text>
-                    <Tag color="success" style={{ margin: 0, fontSize: 11 }}>Active ✓</Tag>
+                    <span style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>Face reference</span>
+                    <span style={{ fontSize: 13, color: '#16a34a', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                      <CheckOutlined style={{ fontSize: 11 }} /> Active
+                    </span>
                   </div>
-                  <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 2 }}>
-                    {user?.employee_code} • {user?.office_name || 'Assigned Office'}
-                  </Text>
-                  <Tag color="blue" style={{ fontSize: 10, marginTop: 4 }}>1024-D Centroid Active</Tag>
+                  <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
+                    Your biometric reference is already registered.
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('reg-input-section');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#0071e3',
+                    fontSize: 14,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    padding: '8px 4px',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Update
+                </button>
               </div>
-            </Card>
+            </div>
+          ) : (
+            <div
+              style={{
+                background: '#fffbeb',
+                border: '1px solid #fef3c7',
+                borderRadius: 14,
+                padding: '12px 14px',
+                marginBottom: 16,
+                fontSize: 13,
+                color: '#92400e',
+              }}
+            >
+              Face reference required to enable attendance check-in.
+            </div>
           )}
+        </>
+      )}
 
-          <Divider style={{ margin: '4px 0 8px' }} />
+      {/* ─── Mode Selector (Two clean methods: Upload or Camera) ─── */}
+      <div id="reg-input-section">
+        <div className="apple-face-reg-tabs">
+          <button
+            type="button"
+            className={`apple-face-reg-tab-btn ${activeTab === 'upload' ? 'active' : ''}`}
+            onClick={() => handleTabChange('upload')}
+          >
+            <UploadOutlined style={{ fontSize: 15 }} />
+            Upload photos
+          </button>
+          <button
+            type="button"
+            className={`apple-face-reg-tab-btn ${activeTab === 'camera' ? 'active' : ''}`}
+            onClick={() => handleTabChange('camera')}
+          >
+            <CameraOutlined style={{ fontSize: 15 }} />
+            Use camera
+          </button>
+        </div>
+        <div className="apple-face-reg-tab-caption">
+          {activeTab === 'upload' ? 'Upload 1–5 clear face photos' : 'Capture 3–5 guided poses'}
+        </div>
+      </div>
 
-          {/* Mode Switcher: Mobile Segmented Control */}
-          <Segmented
-            block
-            size="large"
-            value={activeTab}
-            onChange={(val) => handleTabChange(val as 'upload' | 'camera')}
-            options={[
-              {
-                label: (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500, fontSize: 13 }}>
-                    <UploadOutlined /> Upload Photos (1–5)
-                  </span>
-                ),
-                value: 'upload',
-              },
-              {
-                label: (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500, fontSize: 13 }}>
-                    <CameraOutlined /> Use Camera (3–5)
-                  </span>
-                ),
-                value: 'camera',
-              },
-            ]}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* FLOW 1: UPLOAD PHOTOS                                           */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {activeTab === 'upload' && (
+        <div>
+          {/* Hidden File Input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
+            multiple
+            style={{ display: 'none' }}
+            onChange={handleFilesSelected}
           />
 
-          {/* =============================================================== */}
-          {/* TAB 1: UPLOAD PHOTOS */}
-          {/* =============================================================== */}
-          {activeTab === 'upload' && (
-            <Space direction="vertical" style={{ width: '100%' }} size="middle">
-              <Dragger
-                accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif,image/*"
-                multiple={true}
-                showUploadList={false}
-                beforeUpload={handleFileUpload}
-                disabled={uploadSamples.length >= 5 || uploadProcessing}
-                style={{ padding: '16px 8px', borderRadius: 12, background: '#fafafa' }}
-              >
-                <p className="ant-upload-drag-icon" style={{ margin: '0 0 6px' }}>
-                  <InboxOutlined style={{ fontSize: 36, color: '#1677ff' }} />
-                </p>
-                <p className="ant-upload-text" style={{ fontSize: 15, fontWeight: 600, margin: '0 0 4px' }}>
-                  Tap to Select or Take Face Photos
-                </p>
-                <p className="ant-upload-hint" style={{ fontSize: 12, margin: '0 0 8px', color: '#6b7280' }}>
-                  Select 1 to 5 clear photos. Supports JPG, PNG, WEBP & HEIC.
-                </p>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <Tag color="cyan" style={{ fontSize: 11, margin: 0, maxWidth: '95%', whiteSpace: 'normal', height: 'auto', padding: '3px 8px' }}>
-                    Auto Mobile Photo & HEIC Converter Active
-                  </Tag>
-                </div>
-              </Dragger>
-
-              {statusMessage && (
-                <Alert
-                  type="info"
-                  showIcon
-                  icon={<SyncOutlined spin />}
-                  message={statusMessage}
-                />
-              )}
-
-              {/* Upload Samples Gallery */}
-              {uploadSamples.length > 0 && (
-                <Card
-                  size="small"
-                  title={
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Space size="small">
-                        <Text strong style={{ fontSize: 13 }}>Selected ({uploadSamples.length}/5)</Text>
-                        {uploadSamples.length >= 3 ? (
-                          <Tag color="success">Optimal Count</Tag>
-                        ) : (
-                          <Tag color="blue">{uploadSamples.length} Photo{uploadSamples.length > 1 ? 's' : ''}</Tag>
-                        )}
-                      </Space>
-                      <Button size="small" type="text" danger onClick={() => setUploadSamples([])}>
-                        Clear
-                      </Button>
-                    </div>
-                  }
-                  style={{ background: '#fafafa', borderRadius: 12 }}
-                  bodyStyle={{ padding: 10 }}
-                >
-                  <Row gutter={[8, 8]}>
-                    {uploadSamples.map((sample, idx) => (
-                      <Col xs={12} sm={8} md={6} key={sample.id}>
-                        <div
-                          style={{
-                            position: 'relative',
-                            border: '2px solid #1677ff',
-                            borderRadius: 8,
-                            overflow: 'hidden',
-                            background: '#000',
-                            textAlign: 'center',
-                          }}
-                        >
-                          <img
-                            src={sample.previewUrl}
-                            alt={sample.label}
-                            style={{ width: '100%', height: 110, objectFit: 'cover', display: 'block' }}
-                          />
-                          <div style={{ position: 'absolute', top: 4, right: 4 }}>
-                            <Button
-                              size="small"
-                              danger
-                              type="primary"
-                              shape="circle"
-                              icon={<DeleteOutlined />}
-                              onClick={() => handleRemoveUploadSample(sample.id)}
-                            />
-                          </div>
-                          <div
-                            style={{
-                              padding: '3px 4px',
-                              background: 'rgba(0,0,0,0.7)',
-                              color: '#fff',
-                              fontSize: 10,
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}
-                          >
-                            {idx === 0 ? 'Primary' : `Photo ${idx + 1}`} • Q: {sample.quality}%
-                          </div>
-                        </div>
-                      </Col>
-                    ))}
-                  </Row>
-
-                  <div style={{ marginTop: 14 }}>
-                    <Button
-                      type="primary"
-                      size="large"
-                      block
-                      icon={<SafetyCertificateOutlined />}
-                      loading={submitting}
-                      disabled={uploadSamples.length === 0}
-                      onClick={() => handleSaveEnrollment(uploadSamples)}
-                      style={{
-                        height: 48,
-                        fontSize: 15,
-                        fontWeight: 600,
-                        borderRadius: 8,
-                        background: '#16a34a',
-                        borderColor: '#16a34a',
-                      }}
-                    >
-                      Save Biometric Template ({uploadSamples.length} Photo{uploadSamples.length > 1 ? 's' : ''})
-                    </Button>
-                  </div>
-                </Card>
-              )}
-
-              <div style={{ textAlign: 'center', marginTop: 2 }}>
-                <Button
-                  type="link"
-                  icon={<CameraOutlined />}
-                  onClick={() => handleTabChange('camera')}
-                  style={{ fontSize: 13 }}
-                >
-                  Or take guided poses with your camera →
-                </Button>
+          {/* Clean Upload Box */}
+          <div
+            className="apple-face-reg-upload-area"
+            onClick={() => fileInputRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click();
+            }}
+          >
+            <div className="apple-face-reg-upload-icon">
+              {uploadProcessing ? <LoadingOutlined /> : <UploadOutlined />}
+            </div>
+            <div className="apple-face-reg-upload-title">Select face photos</div>
+            <div className="apple-face-reg-upload-hint">1–5 photos • JPG, PNG, WEBP, HEIC</div>
+            {statusMessage && (
+              <div style={{ marginTop: 8, fontSize: 12, color: '#0071e3', fontWeight: 500 }}>
+                {statusMessage}
               </div>
-            </Space>
+            )}
+          </div>
+
+          {/* Upload Gallery Thumbnails */}
+          {uploadSamples.length > 0 && (
+            <div className="apple-face-reg-gallery">
+              <div className="apple-face-reg-gallery-header">
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
+                  {uploadSamples.length} of 5 photos
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setUploadSamples([])}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#64748b',
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  Clear all
+                </button>
+              </div>
+
+              <div className="apple-face-reg-gallery-grid">
+                {uploadSamples.map((sample, idx) => (
+                  <div key={sample.id} className="apple-face-reg-thumb-card">
+                    <img src={sample.previewUrl} alt={sample.label} />
+                    <button
+                      type="button"
+                      className="apple-face-reg-thumb-del"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveUploadSample(sample.id);
+                      }}
+                      title="Remove photo"
+                    >
+                      <CloseOutlined />
+                    </button>
+                    {idx === 0 && <span className="apple-face-reg-thumb-badge">Primary</span>}
+                  </div>
+                ))}
+
+                {uploadSamples.length < 5 && (
+                  <button
+                    type="button"
+                    className="apple-face-reg-add-tile"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <PlusOutlined style={{ fontSize: 20 }} />
+                    <span>Add photo</span>
+                  </button>
+                )}
+              </div>
+
+              <div style={{ marginTop: 18 }}>
+                <button
+                  type="button"
+                  className="apple-face-reg-primary-btn success"
+                  disabled={uploadSamples.length === 0 || submitting}
+                  onClick={() => handleSaveEnrollment(uploadSamples)}
+                >
+                  {submitting ? <LoadingOutlined /> : null}
+                  Save Face Reference
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* FLOW 2: FOCUSED CAMERA WORKFLOW                                 */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {activeTab === 'camera' && (
+        <div>
+          {cameraError && (
+            <div
+              style={{
+                background: '#fff1f2',
+                border: '1px solid #fecdd3',
+                borderRadius: 12,
+                padding: '10px 14px',
+                color: '#e11d48',
+                fontSize: 13,
+                marginBottom: 12,
+              }}
+            >
+              {cameraError}
+            </div>
           )}
 
-          {/* =============================================================== */}
-          {/* TAB 2: GUIDED CAMERA POSES */}
-          {/* =============================================================== */}
-          {activeTab === 'camera' && (
-            <Space direction="vertical" style={{ width: '100%' }} size="middle">
-              {cameraError && <Alert type="error" message={cameraError} showIcon />}
+          {/* Step & Pose Header */}
+          <div className="apple-face-reg-camera-header">
+            <div className="apple-face-reg-step-label">Step {Math.min(currentPoseIdx + 1, 5)} of 5</div>
+            <h2 className="apple-face-reg-pose-name">{currentPose.shortTitle}</h2>
+            <p className="apple-face-reg-pose-desc">{currentPose.desc}</p>
+          </div>
 
-              {/* Progress of Poses */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <Text strong style={{ fontSize: 13 }}>
-                    Step {Math.min(currentPoseIdx + 1, 5)} of 5: {currentPose.title}
-                  </Text>
-                  <Tag color={cameraSamples.length >= 3 ? 'success' : 'blue'}>
-                    {cameraSamples.length}/5 Captured
-                  </Tag>
-                </div>
-                <Progress
-                  percent={(cameraSamples.length / 5) * 100}
-                  status={cameraSamples.length >= 3 ? 'success' : 'active'}
-                  strokeColor={{ '0%': '#1677ff', '100%': '#52c41a' }}
-                />
-                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 2 }}>
-                  {currentPose.desc}
-                </Text>
-              </div>
-
-              {/* Camera Viewport with Oval Face Guide */}
-              <div className="camera-container" style={{ maxHeight: 340 }}>
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="camera-video"
-                />
-
-                <div className={`face-guide-overlay ${liveFaceDetected ? 'detected' : ''}`} />
-
-                <div className="camera-status-badge">
-                  <Tag color={liveFaceDetected ? 'success' : 'default'} style={{ fontSize: 11 }}>
-                    {liveFaceDetected ? `Face Detected (${(liveQuality * 100).toFixed(0)}%)` : 'Align Face in Oval'}
-                  </Tag>
-                </div>
-
-                <div className="liveness-instruction-box">
-                  {liveFaceDetected
-                    ? `Ready for ${currentPose.title} — Tap Capture`
-                    : 'Position your face inside the oval guide'}
-                </div>
-              </div>
-
-              {/* Capture Controls */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <Button
-                  type="primary"
-                  size="large"
-                  block
-                  icon={<CameraOutlined />}
-                  disabled={!cameraActive || !liveFaceDetected || capturingPose || cameraSamples.length >= 5}
-                  loading={capturingPose}
-                  onClick={handleCapturePose}
-                  style={{ height: 48, fontSize: 15, fontWeight: 600, borderRadius: 8 }}
-                >
-                  Capture Pose {Math.min(currentPoseIdx + 1, 5)} ({currentPose.title})
-                </Button>
-
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {cameraSamples.length > 0 && (
-                    <Button
-                      icon={<RedoOutlined />}
-                      onClick={handleResetCameraPoses}
-                      style={{ flex: 1, height: 38 }}
+          {/* Compact Pose Progress (● ─ ○ ─ ○ ─ ○ ─ ○) */}
+          <div className="apple-face-reg-pose-progress">
+            {GUIDED_POSES.map((pose, i) => {
+              const isCompleted = i < cameraSamples.length;
+              const isActive = i === currentPoseIdx && !isCompleted;
+              return (
+                <React.Fragment key={pose.step}>
+                  <div className="apple-face-reg-pose-dot-wrap">
+                    <div
+                      className={`apple-face-reg-pose-dot ${
+                        isCompleted ? 'completed' : isActive ? 'active' : 'upcoming'
+                      }`}
                     >
-                      Restart
-                    </Button>
+                      {isCompleted ? <CheckOutlined style={{ fontSize: 10 }} /> : pose.step}
+                    </div>
+                  </div>
+                  {i < GUIDED_POSES.length - 1 && (
+                    <div
+                      className={`apple-face-reg-pose-line ${
+                        i < cameraSamples.length ? 'completed' : ''
+                      }`}
+                    />
                   )}
-                  <Button onClick={stopCamera} style={{ flex: 1, height: 38 }}>
-                    Close Camera
-                  </Button>
-                </div>
+                </React.Fragment>
+              );
+            })}
+          </div>
+
+          {/* Live Camera Viewport */}
+          <div className="apple-face-reg-camera-box">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="apple-face-reg-video"
+            />
+
+            {/* Clean Face Guidance Frame */}
+            <div className={`apple-face-reg-guide ${cameraOutlineState}`} />
+
+            {/* Concise Status Badge (Single message, no raw technical stats) */}
+            <div className="apple-face-reg-status-pill">
+              {getCameraGuidanceText()}
+            </div>
+          </div>
+
+          {/* Primary Action Button (Clean: [ Capture ]) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <button
+              type="button"
+              className="apple-face-reg-primary-btn"
+              disabled={
+                !cameraActive ||
+                !liveFaceDetected ||
+                capturingPose ||
+                cameraSamples.length >= 5
+              }
+              onClick={handleCapturePose}
+            >
+              {capturingPose ? <LoadingOutlined /> : <CameraOutlined />}
+              Capture
+            </button>
+
+            {/* Secondary Controls */}
+            <div style={{ display: 'flex', gap: 8 }}>
+              {cameraSamples.length > 0 && (
+                <button
+                  type="button"
+                  className="apple-face-reg-secondary-btn"
+                  onClick={handleResetCameraPoses}
+                  style={{ flex: 1 }}
+                >
+                  <UndoOutlined style={{ marginRight: 6 }} />
+                  Restart
+                </button>
+              )}
+              <button
+                type="button"
+                className="apple-face-reg-secondary-btn"
+                onClick={() => handleTabChange('upload')}
+                style={{ flex: 1 }}
+              >
+                Upload photos
+              </button>
+            </div>
+          </div>
+
+          {/* Captured Poses Strip */}
+          {cameraSamples.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+                  {cameraSamples.length} of 5 poses captured
+                </span>
+                <span style={{ fontSize: 12, color: cameraSamples.length >= 3 ? '#16a34a' : '#64748b' }}>
+                  {cameraSamples.length >= 3 ? '✓ Ready to save' : 'Capture at least 3 poses'}
+                </span>
               </div>
 
-              {/* Captured Poses Thumbnails Row */}
-              {cameraSamples.length > 0 && (
-                <Card
-                  size="small"
-                  title={
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Space size="small">
-                        <Text strong style={{ fontSize: 13 }}>Captured ({cameraSamples.length}/5)</Text>
-                        {cameraSamples.length >= 3 ? (
-                          <Tag color="success">Ready (3+ poses)</Tag>
-                        ) : (
-                          <Tag color="warning">Need 3+ poses</Tag>
-                        )}
-                      </Space>
-                    </div>
-                  }
-                  style={{ background: '#fafafa', borderRadius: 12 }}
-                  bodyStyle={{ padding: 10 }}
-                >
-                  <Row gutter={[6, 6]}>
-                    {cameraSamples.map((sample) => (
-                      <Col xs={8} sm={6} md={4} key={sample.id}>
-                        <div
-                          style={{
-                            border: '2px solid #52c41a',
-                            borderRadius: 8,
-                            overflow: 'hidden',
-                            background: '#000',
-                            textAlign: 'center',
-                          }}
-                        >
-                          <img
-                            src={sample.previewUrl}
-                            alt={sample.label}
-                            style={{ width: '100%', height: 75, objectFit: 'cover', display: 'block' }}
-                          />
-                          <div
-                            style={{
-                              padding: '2px 4px',
-                              background: 'rgba(0,0,0,0.7)',
-                              color: '#fff',
-                              fontSize: 9,
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}
-                          >
-                            {sample.label}
-                          </div>
-                        </div>
-                      </Col>
-                    ))}
-                  </Row>
-
-                  <div style={{ marginTop: 14 }}>
-                    <Button
-                      type="primary"
-                      size="large"
-                      block
-                      icon={<SafetyCertificateOutlined />}
-                      loading={submitting}
-                      disabled={cameraSamples.length < 3}
-                      onClick={() => handleSaveEnrollment(cameraSamples)}
-                      style={{
-                        height: 48,
-                        fontSize: 15,
-                        fontWeight: 600,
-                        borderRadius: 8,
-                        background: cameraSamples.length >= 3 ? '#16a34a' : undefined,
-                        borderColor: cameraSamples.length >= 3 ? '#16a34a' : undefined,
-                      }}
-                    >
-                      Confirm & Save Template ({cameraSamples.length} Poses)
-                    </Button>
+              <div className="apple-face-reg-poses-strip">
+                {cameraSamples.map((sample) => (
+                  <div key={sample.id} className="apple-face-reg-pose-item">
+                    <img src={sample.previewUrl} alt={sample.label} />
+                    <span className="apple-face-reg-pose-check">
+                      <CheckOutlined />
+                    </span>
                   </div>
-                </Card>
+                ))}
+              </div>
+
+              {/* Completion Action */}
+              {cameraSamples.length >= 3 && (
+                <div
+                  style={{
+                    marginTop: 14,
+                    background: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
+                    borderRadius: 14,
+                    padding: '14px',
+                    textAlign: 'center',
+                  }}
+                >
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#16a34a' }}>
+                    ✓ {cameraSamples.length === 5 ? 'All photos captured' : 'Face reference ready'}
+                  </div>
+                  <div style={{ fontSize: 13, color: '#475569', marginTop: 2, marginBottom: 12 }}>
+                    Your biometric reference is ready to be saved.
+                  </div>
+                  <button
+                    type="button"
+                    className="apple-face-reg-primary-btn success"
+                    disabled={submitting}
+                    onClick={() => handleSaveEnrollment(cameraSamples)}
+                  >
+                    {submitting ? <LoadingOutlined /> : null}
+                    Save Face Reference
+                  </button>
+                </div>
               )}
-            </Space>
+            </div>
           )}
-        </Space>
-      </Card>
+        </div>
+      )}
+
+      {/* ─── Technical Details Disclosure (Progressive Disclosure) ─── */}
+      <div className="apple-face-reg-tech-details">
+        <div
+          onClick={() => setTechOpen(!techOpen)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') setTechOpen(!techOpen);
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer',
+            fontSize: 13,
+            color: '#64748b',
+            userSelect: 'none',
+          }}
+        >
+          <span>Technical details</span>
+          {techOpen ? <DownOutlined style={{ fontSize: 11 }} /> : <RightOutlined style={{ fontSize: 11 }} />}
+        </div>
+
+        {techOpen && (
+          <div className="apple-face-reg-tech-content">
+            <div className="apple-face-reg-tech-row">
+              <span>Detection confidence</span>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                {liveFaceDetected ? `${Math.round(liveQuality * 100)}%` : 'N/A'}
+              </span>
+            </div>
+            <div className="apple-face-reg-tech-row">
+              <span>Image format</span>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>{lastDetectedFormat}</span>
+            </div>
+            <div className="apple-face-reg-tech-row">
+              <span>Converted format</span>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>JPEG (Standard RGB)</span>
+            </div>
+            <div className="apple-face-reg-tech-row">
+              <span>Template status</span>
+              <span style={{ fontWeight: 600, color: user?.face_enrolled ? '#16a34a' : '#64748b' }}>
+                {user?.face_enrolled ? 'Active' : 'Pending enrollment'}
+              </span>
+            </div>
+            <div className="apple-face-reg-tech-row">
+              <span>Centroid</span>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>1024-D Centroid</span>
+            </div>
+            <div className="apple-face-reg-tech-row">
+              <span>Model</span>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>@vladmandic/human v3.2.0</span>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

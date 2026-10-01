@@ -3112,5 +3112,530 @@ html, body {
   cursor: pointer;
 }
 
+/* ══════════════════════════════════════════════════════════════
+   APPLE HIG MOBILE FACE REGISTRATION STYLES
+   ══════════════════════════════════════════════════════════════ */
+.apple-face-reg-container {
+  max-width: 540px;
+  margin: 0 auto;
+  padding: 12px 16px calc(env(safe-area-inset-bottom, 20px) + 24px);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #0f172a;
+}
+
+.apple-face-reg-header {
+  margin-bottom: 16px;
+}
+
+.apple-face-reg-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: #0f172a;
+  margin: 0 0 4px;
+}
+
+.apple-face-reg-subtitle {
+  font-size: 14px;
+  color: #64748b;
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* Reference Card */
+.apple-face-reg-ref-card {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.apple-face-reg-ref-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.apple-face-reg-ref-thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  flex-shrink: 0;
+}
+
+.apple-face-reg-ref-thumb-placeholder {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+/* Method Selector */
+.apple-face-reg-tabs {
+  background: #f1f5f9;
+  border-radius: 12px;
+  padding: 3px;
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.apple-face-reg-tab-btn {
+  flex: 1;
+  min-height: 44px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.apple-face-reg-tab-btn.active {
+  background: #ffffff;
+  color: #0f172a;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.apple-face-reg-tab-caption {
+  font-size: 13px;
+  color: #64748b;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+/* Upload Area */
+.apple-face-reg-upload-area {
+  border: 1.5px dashed #cbd5e1;
+  border-radius: 16px;
+  background: #f8fafc;
+  padding: 32px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+  user-select: none;
+}
+
+.apple-face-reg-upload-area:hover,
+.apple-face-reg-upload-area:focus-visible {
+  border-color: #0071e3;
+  background: #f0f7ff;
+}
+
+.apple-face-reg-upload-icon {
+  font-size: 32px;
+  color: #0071e3;
+  margin-bottom: 8px;
+}
+
+.apple-face-reg-upload-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.apple-face-reg-upload-hint {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+}
+
+/* Upload Gallery */
+.apple-face-reg-gallery {
+  margin-top: 16px;
+}
+
+.apple-face-reg-gallery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.apple-face-reg-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.apple-face-reg-thumb-card {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1.5px solid #e2e8f0;
+  background: #0f172a;
+}
+
+.apple-face-reg-thumb-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.apple-face-reg-thumb-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #ffffff;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.apple-face-reg-thumb-del:hover {
+  background: #ff3b30;
+}
+
+.apple-face-reg-thumb-badge {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.apple-face-reg-add-tile {
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  border: 1.5px dashed #cbd5e1;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: #64748b;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.apple-face-reg-add-tile:hover {
+  border-color: #0071e3;
+  color: #0071e3;
+  background: #f0f7ff;
+}
+
+/* Focused Camera Flow */
+.apple-face-reg-camera-header {
+  margin-bottom: 12px;
+}
+
+.apple-face-reg-step-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0071e3;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.apple-face-reg-pose-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px;
+}
+
+.apple-face-reg-pose-desc {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Pose Progress Bar / Dots */
+.apple-face-reg-pose-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 14px 0 16px;
+  padding: 0 8px;
+}
+
+.apple-face-reg-pose-dot-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.apple-face-reg-pose-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.apple-face-reg-pose-dot.completed {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.apple-face-reg-pose-dot.active {
+  background: #0071e3;
+  color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.2);
+}
+
+.apple-face-reg-pose-dot.upcoming {
+  background: #f1f5f9;
+  color: #94a3b8;
+  border: 1px solid #e2e8f0;
+}
+
+.apple-face-reg-pose-line {
+  flex: 1;
+  height: 2px;
+  background: #e2e8f0;
+  margin: 0 6px 16px 6px;
+}
+
+.apple-face-reg-pose-line.completed {
+  background: #16a34a;
+}
+
+/* Live Camera Frame */
+.apple-face-reg-camera-box {
+  position: relative;
+  width: 100%;
+  height: 360px;
+  max-height: 55vh;
+  border-radius: 20px;
+  overflow: hidden;
+  background: #000000;
+  margin-bottom: 14px;
+}
+
+.apple-face-reg-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  display: block;
+}
+
+/* Clean Face Guidance Frame (Subtle, Apple HIG style) */
+.apple-face-reg-guide {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 58%;
+  max-width: 210px;
+  height: 72%;
+  max-height: 260px;
+  border-radius: 44px;
+  pointer-events: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.apple-face-reg-guide.neutral {
+  border: 2px solid rgba(255, 255, 255, 0.4);
+}
+
+.apple-face-reg-guide.detected {
+  border: 2px solid rgba(52, 199, 89, 0.7);
+}
+
+.apple-face-reg-guide.ready {
+  border: 2px solid #34c759;
+  box-shadow: 0 0 16px rgba(52, 199, 89, 0.35);
+}
+
+.apple-face-reg-guide.error {
+  border: 2px solid #ff3b30;
+  box-shadow: 0 0 16px rgba(255, 59, 48, 0.3);
+}
+
+/* Camera Single Status Pill */
+.apple-face-reg-status-pill {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #ffffff;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Primary Action Buttons */
+.apple-face-reg-primary-btn {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  background: #0071e3;
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.apple-face-reg-primary-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.apple-face-reg-primary-btn.success {
+  background: #16a34a;
+}
+
+.apple-face-reg-secondary-btn {
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0 16px;
+  transition: background 0.15s ease;
+}
+
+.apple-face-reg-secondary-btn:hover {
+  background: #f8fafc;
+}
+
+/* Captured Poses Strip */
+.apple-face-reg-poses-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 10px 0 4px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.apple-face-reg-pose-item {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+  border: 1.5px solid #16a34a;
+  background: #000;
+}
+
+.apple-face-reg-pose-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.apple-face-reg-pose-check {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #16a34a;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+}
+
+/* Technical Details Accordion */
+.apple-face-reg-tech-details {
+  margin-top: 24px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 14px;
+}
+
+.apple-face-reg-tech-details summary {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.apple-face-reg-tech-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.apple-face-reg-tech-content {
+  margin-top: 10px;
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: #475569;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.apple-face-reg-tech-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 
 
