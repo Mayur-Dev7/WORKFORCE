@@ -182,9 +182,10 @@ export const HolidaysPage: React.FC = () => {
     setRulesLoading(true);
     try {
       const res = await getWeeklyHolidayRules();
-      setWeeklyRules(res.data.data);
+      const rules = res.data?.data || [];
+      setWeeklyRules(rules);
       const active = new Set(
-        res.data.data.filter((r) => r.is_active).map((r) => r.day_of_week)
+        rules.filter((r) => r.is_active && r.week_of_month == null).map((r) => r.day_of_week)
       );
       setActiveDays(active);
     } catch {
@@ -288,9 +289,20 @@ export const HolidaysPage: React.FC = () => {
         week_of_month: null,
         is_active: activeDays.has(i),
       }));
-      await batchUpsertWeeklyRules(rules);
+      const res = await batchUpsertWeeklyRules(rules);
       message.success('Weekly off days updated');
-      fetchWeeklyRules();
+      const returnedRules = res.data?.data;
+      if (returnedRules && Array.isArray(returnedRules)) {
+        setWeeklyRules(returnedRules);
+        const active = new Set(
+          returnedRules
+            .filter((r) => r.is_active && r.week_of_month == null)
+            .map((r) => r.day_of_week)
+        );
+        setActiveDays(active);
+      } else {
+        await fetchWeeklyRules();
+      }
     } catch (err: any) {
       message.error(err.response?.data?.error?.message || 'Failed to save weekly rules');
     } finally {
@@ -536,7 +548,11 @@ export const HolidaysPage: React.FC = () => {
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         Current non-working days:{' '}
                         <strong>
-                          {[...new Set(weeklyRules.filter((r) => r.is_active).map((r) => DAY_NAMES[r.day_of_week]))].join(', ') || 'None'}
+                          {[...new Set(
+                            weeklyRules
+                              .filter((r) => r.is_active && r.week_of_month == null)
+                              .map((r) => DAY_NAMES[r.day_of_week])
+                          )].join(', ') || 'None'}
                         </strong>
                       </Text>
                     </div>

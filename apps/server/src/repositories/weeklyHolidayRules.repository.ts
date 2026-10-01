@@ -11,9 +11,10 @@ export class WeeklyHolidayRulesRepository {
     this.db = db;
   }
 
-  async findByCompanyId(companyId: string, activeOnly = false): Promise<WeeklyHolidayRuleRow[]> {
+  async findByCompanyId(companyId: string, activeOnly = false, client?: PoolClient): Promise<WeeklyHolidayRuleRow[]> {
+    const db = client ?? this.db;
     const whereActive = activeOnly ? `AND is_active = TRUE` : '';
-    const res = await this.db.query<WeeklyHolidayRuleRow>(
+    const res = await db.query<WeeklyHolidayRuleRow>(
       `SELECT * FROM weekly_holiday_rules
        WHERE company_id = $1 ${whereActive}
        ORDER BY day_of_week ASC, week_of_month ASC NULLS LAST`,

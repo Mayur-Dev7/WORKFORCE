@@ -123,13 +123,11 @@ export class HolidayService {
     rules: Array<{ day_of_week: number; week_of_month: number | null; is_active: boolean }>
   ): Promise<WeeklyHolidayRuleRow[]> {
     return withTransaction(async (client) => {
-      const results: WeeklyHolidayRuleRow[] = [];
       for (const rule of rules) {
-        const saved = await weeklyHolidayRulesRepository.upsert(
+        await weeklyHolidayRulesRepository.upsert(
           { company_id: companyId, ...rule },
           client
         );
-        results.push(saved);
       }
       await auditLogsRepository.create({
         actor_user_id: actorUserId,
@@ -137,7 +135,7 @@ export class HolidayService {
         entity_type: 'weekly_holiday_rule',
         metadata: { count: rules.length } as Record<string, unknown>,
       }, client);
-      return results;
+      return weeklyHolidayRulesRepository.findByCompanyId(companyId, false, client);
     });
   }
 
