@@ -2645,7 +2645,7 @@ html, body {
 }
 
 .apple-mobile-day-slot.is-selected .apple-mobile-dot {
-  background-color: #ffffff !important;
+  display: none !important;
 }
 
 .apple-mobile-day-slot.is-future .apple-mobile-day-num {
