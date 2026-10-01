@@ -196,14 +196,17 @@ export const AppLayout: React.FC = () => {
 
   const SidebarLogo = ({ showText }: { showText: boolean }) => (
     <div
+      className="apple-sidebar-logo"
       style={{
         height: 52,
         display: 'flex',
         alignItems: 'center',
-        padding: '0 18px',
+        padding: showText ? '0 18px' : '0',
+        justifyContent: showText ? 'flex-start' : 'center',
         gap: 10,
         borderBottom: '1px solid var(--apple-border)',
         flexShrink: 0,
+        transition: 'padding 0.15s ease, justify-content 0.15s ease',
       }}
     >
       <div
@@ -217,12 +220,13 @@ export const AppLayout: React.FC = () => {
           justifyContent: 'center',
           color: '#ffffff',
           fontSize: 14,
+          flexShrink: 0,
         }}
       >
         <IdcardOutlined />
       </div>
       {showText && (
-        <div>
+        <div style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>
           <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--apple-text-primary)', lineHeight: 1.2, letterSpacing: '-0.2px' }}>
             Workforce Access
           </div>
@@ -241,6 +245,7 @@ export const AppLayout: React.FC = () => {
         collapsible
         collapsed={collapsed}
         onCollapse={setCollapsed}
+        collapsedWidth={72}
         theme="light"
         width={240}
         className="app-sider-desktop apple-sider"

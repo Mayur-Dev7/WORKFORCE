@@ -926,6 +926,84 @@ html, body {
   transition: color 0.12s ease !important;
 }
 
+/* ─── Apple Collapsed Sider Overrides ────────────────── */
+.apple-sider.ant-layout-sider-collapsed {
+  width: 72px !important;
+  min-width: 72px !important;
+  max-width: 72px !important;
+  flex: 0 0 72px !important;
+}
+
+.apple-sider.ant-layout-sider-collapsed .apple-sidebar-logo {
+  justify-content: center !important;
+  padding: 0 !important;
+}
+
+/* Hide cut-off group headers and replace with understated divider */
+.apple-sider.ant-layout-sider-collapsed .ant-menu-item-group-title {
+  display: none !important;
+}
+
+.apple-sider.ant-layout-sider-collapsed .ant-menu-item-group {
+  padding: 6px 0 !important;
+  border-bottom: 1px solid var(--apple-border-subtle);
+}
+
+.apple-sider.ant-layout-sider-collapsed .ant-menu-item-group:last-child {
+  border-bottom: none !important;
+}
+
+.apple-sider.ant-layout-sider-collapsed .ant-menu-item-group-list {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Centered icon-rail items */
+.apple-sider.ant-layout-sider-collapsed .ant-menu-item {
+  width: 44px !important;
+  height: 44px !important;
+  line-height: 44px !important;
+  margin: 4px auto !important;
+  padding: 0 !important;
+  border-radius: 10px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+}
+
+.apple-sider.ant-layout-sider-collapsed .ant-menu-item .ant-menu-item-icon {
+  margin: 0 !important;
+  font-size: 18px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.apple-sider.ant-layout-sider-collapsed .ant-menu-item .ant-menu-title-content {
+  display: none !important;
+}
+
+/* Bottom Collapse Trigger Bar */
+.apple-sider .ant-layout-sider-trigger {
+  background-color: var(--apple-surface-secondary) !important;
+  border-top: 1px solid var(--apple-border) !important;
+  border-right: 1px solid var(--apple-border) !important;
+  color: var(--apple-text-secondary) !important;
+  height: 48px !important;
+  line-height: 48px !important;
+  transition: background-color 0.15s ease, color 0.15s ease !important;
+}
+
+.apple-sider .ant-layout-sider-trigger:hover {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  color: var(--apple-text-primary) !important;
+}
+
+
 /* Header */
 .apple-header {
   background-color: var(--apple-surface) !important;
