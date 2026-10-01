@@ -37,6 +37,7 @@ import { useAuth } from '../../context/AuthContext.js';
 import { useIsMobile } from '../../hooks/useMediaQuery.js';
 import { getMyLeaveRequests } from '../../services/leave.api.js';
 import { getHolidays, getWeeklyHolidayRules } from '../../services/holidays.api.js';
+import { MobileAttendanceHistoryView } from '../../components/attendance/MobileAttendanceHistoryView.js';
 import dayjs, { Dayjs } from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -480,57 +481,52 @@ export const AttendanceHistoryPage: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', paddingBottom: isMobile ? 16 : 24 }}>
-      {/* ── Main White Theme Wrapper ── */}
-      <div className="attendance-summary-wrapper">
-        {/* Top Header Section */}
-        <div className="attendance-summary-header">
-          <div className="attendance-header-top">
-            <div>
-              <h1 className="attendance-page-title">
-                <ScheduleOutlined style={{ color: '#1677ff' }} />
-                Attendance & Timesheet
-              </h1>
-              <Text type="secondary" style={{ fontSize: 13, marginTop: 4, display: 'block' }}>
-                Monitor monthly working hours, punctuality, and biometric verification logs
-              </Text>
-            </div>
-
-            {/* Live Punch Status Indicator & Quick Action */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div className="attendance-live-badge">
-                <Badge status={activeSession ? 'processing' : 'default'} />
-                <span style={{ fontSize: 13, fontWeight: 500, color: '#334155' }}>
-                  {activeSession ? (
-                    <>
-                      Checked in at <b>{dayjs(activeSession.check_in_at).format('hh:mm A')}</b>
-                    </>
-                  ) : (
-                    'Not checked in'
-                  )}
-                </span>
+      {isMobile ? (
+        /* ── Mobile View: Focused, Apple HIG History Experience ── */
+        <MobileAttendanceHistoryView
+          selectedMonth={selectedMonth}
+          onPrevMonth={() => setSelectedMonth(selectedMonth.subtract(1, 'month'))}
+          onNextMonth={() => setSelectedMonth(selectedMonth.add(1, 'month'))}
+          onSelectMonth={(val) => setSelectedMonth(val)}
+          onJumpToCurrentMonth={() => setSelectedMonth(dayjs().startOf('month'))}
+          metrics={metrics}
+          startOffset={startOffset}
+          days={days}
+          sessions={sessions}
+          loading={loading}
+          onRetry={fetchMonthData}
+        />
+      ) : (
+        /* ── Desktop View: Spacious Timesheet Calendar & Punch Logs ── */
+        <>
+          <div className="attendance-summary-wrapper">
+          {/* Top Header Section */}
+          <div className="attendance-summary-header">
+            <div className="attendance-header-top">
+              <div>
+                <h1 className="attendance-page-title">
+                  <ScheduleOutlined style={{ color: '#1677ff' }} />
+                  Attendance & Timesheet
+                </h1>
+                <Text type="secondary" style={{ fontSize: 13, marginTop: 4, display: 'block' }}>
+                  Monitor monthly working hours, punctuality, and biometric verification logs
+                </Text>
               </div>
 
-              <Button
-                type="primary"
-                danger={Boolean(activeSession)}
-                onClick={() =>
-                  navigate(activeSession ? '/employee/attendance/check-out' : '/employee/attendance/check-in')
-                }
-                style={{ borderRadius: 8, fontWeight: 600 }}
-              >
-                {activeSession ? 'Check Out' : 'Check In'}
-              </Button>
-
-              <Tooltip title="Refresh attendance data">
-                <Button
-                  icon={<ReloadOutlined />}
-                  onClick={fetchMonthData}
-                  loading={loading}
-                  style={{ borderRadius: 8 }}
-                />
-              </Tooltip>
+              {/* Refresh Action */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Tooltip title="Refresh attendance data">
+                  <Button
+                    icon={<ReloadOutlined />}
+                    onClick={fetchMonthData}
+                    loading={loading}
+                    style={{ borderRadius: 8 }}
+                  >
+                    Refresh
+                  </Button>
+                </Tooltip>
+              </div>
             </div>
-          </div>
 
           {/* Navigation Tabs */}
           <Tabs
@@ -953,6 +949,8 @@ export const AttendanceHistoryPage: React.FC = () => {
           </div>
         )}
       </Drawer>
+        </>
+      )}
     </div>
   );
 };
