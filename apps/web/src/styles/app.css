@@ -2475,17 +2475,6 @@ html, body {
   background: rgba(0, 0, 0, 0.04);
 }
 
-.apple-mobile-current-link {
-  background: transparent;
-  border: none;
-  color: #0071e3;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 4px 6px;
-  margin-left: 2px;
-}
-
 /* Segmented Control */
 .apple-mobile-segmented {
   display: flex;

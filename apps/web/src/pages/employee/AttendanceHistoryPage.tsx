@@ -488,7 +488,6 @@ export const AttendanceHistoryPage: React.FC = () => {
           onPrevMonth={() => setSelectedMonth(selectedMonth.subtract(1, 'month'))}
           onNextMonth={() => setSelectedMonth(selectedMonth.add(1, 'month'))}
           onSelectMonth={(val) => setSelectedMonth(val)}
-          onJumpToCurrentMonth={() => setSelectedMonth(dayjs().startOf('month'))}
           metrics={metrics}
           startOffset={startOffset}
           days={days}
@@ -615,17 +614,6 @@ export const AttendanceHistoryPage: React.FC = () => {
                 >
                   <RightOutlined />
                 </button>
-
-                {/* Jump to Today Button */}
-                {!selectedMonth.isSame(dayjs(), 'month') && (
-                  <Button
-                    size="small"
-                    onClick={() => setSelectedMonth(dayjs().startOf('month'))}
-                    style={{ borderRadius: 6, fontSize: 12 }}
-                  >
-                    Current Month
-                  </Button>
-                )}
               </div>
 
               {/* Month Picker Dropdown */}

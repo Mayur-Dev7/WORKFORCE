@@ -39,7 +39,6 @@ export interface MobileAttendanceHistoryProps {
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onSelectMonth: (month: Dayjs) => void;
-  onJumpToCurrentMonth: () => void;
   metrics: {
     totalHoursFormatted: string;
     presentDaysCount: number;
@@ -61,7 +60,6 @@ export const MobileAttendanceHistoryView: React.FC<MobileAttendanceHistoryProps>
   onPrevMonth,
   onNextMonth,
   onSelectMonth,
-  onJumpToCurrentMonth,
   metrics,
   startOffset,
   days,
@@ -102,8 +100,6 @@ export const MobileAttendanceHistoryView: React.FC<MobileAttendanceHistoryProps>
     setShowTechnicalDetails(false);
   }, [selectedMonth]);
 
-  const isCurrentMonth = selectedMonth.isSame(dayjs(), 'month');
-
   // Find day object for currently selected date
   const activeDay = useMemo(() => {
     return days.find((d) => d.date.isSame(selectedDate, 'day')) || null;
@@ -142,16 +138,6 @@ export const MobileAttendanceHistoryView: React.FC<MobileAttendanceHistoryProps>
           >
             <RightOutlined style={{ fontSize: 12 }} />
           </button>
-
-          {!isCurrentMonth && (
-            <button
-              type="button"
-              className="apple-mobile-current-link"
-              onClick={onJumpToCurrentMonth}
-            >
-              Current
-            </button>
-          )}
 
           {/* Hidden DatePicker popover anchor */}
           <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>
