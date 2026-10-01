@@ -354,6 +354,16 @@ export async function runSeed(): Promise<void> {
       `, [companyId, lt.code, lt.name, lt.annual_quota, lt.is_paid]);
     }
 
+    // 9. Seed Default Weekly Holiday Rules (Sunday off)
+    console.log('🌱 Seeding weekly holiday rules...');
+    await client.query(`
+      INSERT INTO weekly_holiday_rules (company_id, day_of_week, week_of_month, is_active)
+      VALUES ($1, 0, NULL, true)
+      ON CONFLICT (company_id, day_of_week, week_of_month) DO UPDATE
+        SET is_active = true,
+            updated_at = NOW();
+    `, [companyId]);
+
     await client.query('COMMIT');
     console.log('✅ Database seed completed successfully!');
 

@@ -60,6 +60,12 @@ export function isFixedHoliday(date: Date, holidays: Holiday[]): boolean {
 export function isWeeklyHoliday(date: Date, rules: WeeklyHolidayRule[]): boolean {
   const dow = date.getUTCDay(); // 0=Sun … 6=Sat
 
+  // Corporate default fallback: if no weekly rules are configured for the company,
+  // Sunday (dow === 0) is treated as the standard non-working day.
+  if (!rules || rules.length === 0) {
+    return dow === 0;
+  }
+
   for (const rule of rules) {
     if (!rule.is_active) continue;
     if (rule.day_of_week !== dow) continue;

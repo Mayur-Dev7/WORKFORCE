@@ -50,6 +50,7 @@ import {
   getMyLeaveBalances,
   getLeaveTypes,
 } from '../../services/leave.api.js';
+import { getWorkingDays } from '../../services/holidays.api.js';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -171,6 +172,8 @@ export const LeavePage: React.FC = () => {
   const [applying, setApplying] = useState(false);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [serverWorkingDays, setServerWorkingDays] = useState<number | null>(null);
+  const [calculatingDays, setCalculatingDays] = useState<boolean>(false);
 
   const isMobile = useIsMobile(768);
 
@@ -194,8 +197,8 @@ export const LeavePage: React.FC = () => {
     );
   }, [selectedBalance]);
 
-  // Calculate requested working days (excluding Sundays, matching corporate calendar)
-  const requestedWorkingDays = useMemo(() => {
+  // Fallback client-side calculation (excluding Sundays, matching corporate default)
+  const clientFallbackWorkingDays = useMemo(() => {
     if (!dateRange || !dateRange[0] || !dateRange[1]) return 0;
     const start = dateRange[0].startOf('day');
     const end = dateRange[1].startOf('day');
@@ -212,12 +215,56 @@ export const LeavePage: React.FC = () => {
     return count;
   }, [dateRange]);
 
+  // Synchronize working days from server when date range changes
+  useEffect(() => {
+    if (!dateRange || !dateRange[0] || !dateRange[1]) {
+      setServerWorkingDays(null);
+      setCalculatingDays(false);
+      return;
+    }
+
+    const start = dateRange[0].startOf('day');
+    const end = dateRange[1].startOf('day');
+    if (end.isBefore(start)) {
+      setServerWorkingDays(0);
+      setCalculatingDays(false);
+      return;
+    }
+
+    let isCurrent = true;
+    setCalculatingDays(true);
+
+    const startDateStr = start.format('YYYY-MM-DD');
+    const endDateStr = end.format('YYYY-MM-DD');
+
+    getWorkingDays(startDateStr, endDateStr)
+      .then((res) => {
+        if (isCurrent && res.data?.data?.working_days !== undefined) {
+          setServerWorkingDays(res.data.data.working_days);
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not fetch server working days, using fallback calculation', err);
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setCalculatingDays(false);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [dateRange]);
+
+  const requestedWorkingDays = serverWorkingDays !== null ? serverWorkingDays : clientFallbackWorkingDays;
   const hasSelectedDates = Boolean(dateRange && dateRange[0] && dateRange[1]);
   const isCrossingLimit = Boolean(
     selectedLeaveTypeId &&
     hasSelectedDates &&
     requestedWorkingDays > availableDays
   );
+  const excessDays = requestedWorkingDays > availableDays ? requestedWorkingDays - availableDays : 0;
 
   const fetchAll = async () => {
     setLoading(true);
@@ -242,7 +289,7 @@ export const LeavePage: React.FC = () => {
   }, [filterYear, filterStatus]);
 
   const handleApply = async (values: any) => {
-    if (applying) return; // Prevent double-clicks from rapid tapping
+    if (applying || calculatingDays) return; // Prevent double-clicks from rapid tapping or while calculating
 
     if (!dateRange || !dateRange[0] || !dateRange[1]) {
       message.error({ content: 'Please select a date range', key: 'leave-action-toast' });
@@ -250,8 +297,9 @@ export const LeavePage: React.FC = () => {
     }
 
     if (isCrossingLimit) {
+      const excess = excessDays.toFixed(1);
       message.error({
-        content: `Insufficient leave balance. Requested: ${requestedWorkingDays} day(s), Available: ${availableDays.toFixed(2)} day(s)`,
+        content: `Insufficient leave balance. Requested: ${requestedWorkingDays} day(s), Available: ${availableDays.toFixed(2)} day(s) (Exceeds by ${excess} day(s))`,
         key: 'leave-action-toast',
       });
       return;
@@ -269,6 +317,8 @@ export const LeavePage: React.FC = () => {
       setApplyVisible(false);
       applyForm.resetFields();
       setDateRange(null);
+      setServerWorkingDays(null);
+      setCalculatingDays(false);
       fetchAll();
     } catch (err: any) {
       const msg = err.response?.data?.error?.message || 'Failed to apply for leave';
@@ -388,7 +438,6 @@ export const LeavePage: React.FC = () => {
           onChange={(val) => setDateRange(val)}
           disabledDate={(d) => Boolean(d && d < dayjs().startOf('day'))}
           format="DD MMM YYYY"
-          maxDays={selectedLeaveTypeId ? availableDays : undefined}
         />
       </Form.Item>
 
@@ -413,6 +462,7 @@ export const LeavePage: React.FC = () => {
             >
               <span>
                 <strong style={{ fontWeight: 600 }}>Insufficient balance:</strong> {requestedWorkingDays}d requested
+                {' '}({excessDays.toFixed(1)}d over limit)
               </span>
               <span
                 style={{
@@ -445,7 +495,9 @@ export const LeavePage: React.FC = () => {
               }}
             >
               <span>
-                {requestedWorkingDays} {requestedWorkingDays === 1 ? 'day' : 'days'} requested
+                {calculatingDays
+                  ? 'Calculating working days...'
+                  : `${requestedWorkingDays} ${requestedWorkingDays === 1 ? 'day' : 'days'} requested`}
               </span>
               <span
                 style={{
@@ -487,15 +539,17 @@ export const LeavePage: React.FC = () => {
       <Button
         type="primary"
         htmlType="submit"
-        loading={applying}
-        disabled={applying || isCrossingLimit}
+        loading={applying || calculatingDays}
+        disabled={applying || calculatingDays || isCrossingLimit || !hasSelectedDates}
         danger={isCrossingLimit}
         block
         size="large"
         style={{ marginTop: 8, height: 44, borderRadius: 8 }}
       >
         {isCrossingLimit
-          ? `Cannot Submit (Exceeds ${availableDays.toFixed(1)}d Limit)`
+          ? `Cannot Submit (Exceeds by ${excessDays.toFixed(1)}d)`
+          : calculatingDays
+          ? 'Calculating Days...'
           : 'Submit Application'}
       </Button>
     </Form>
@@ -651,7 +705,7 @@ export const LeavePage: React.FC = () => {
         placement="bottom"
         height="auto"
         open={applyVisible && isMobile}
-        onClose={() => { setApplyVisible(false); applyForm.resetFields(); setDateRange(null); }}
+        onClose={() => { setApplyVisible(false); applyForm.resetFields(); setDateRange(null); setServerWorkingDays(null); setCalculatingDays(false); }}
         className="leave-apply-drawer"
         styles={{ body: { paddingBottom: 'env(safe-area-inset-bottom, 16px)' } }}
       >
@@ -662,7 +716,7 @@ export const LeavePage: React.FC = () => {
       <Modal
         title="Apply for Leave"
         open={applyVisible && !isMobile}
-        onCancel={() => { setApplyVisible(false); applyForm.resetFields(); setDateRange(null); }}
+        onCancel={() => { setApplyVisible(false); applyForm.resetFields(); setDateRange(null); setServerWorkingDays(null); setCalculatingDays(false); }}
         footer={null}
         destroyOnClose
         width={480}

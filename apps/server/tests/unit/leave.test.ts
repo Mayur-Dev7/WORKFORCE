@@ -93,4 +93,23 @@ describe('Server-Side LeaveService Balance & Date Validation Tests', () => {
       )
     ).rejects.toThrow(/Insufficient leave balance\. Requested: 5 day\(s\), Available: 3\.00 day\(s\)/);
   });
+
+  it('correctly defaults to Sunday as non-working day when company has no weekly rules configured', async () => {
+    const { isWeeklyHoliday, countWorkingDays } = await import('../../src/lib/calendar/holidayResolver.js');
+
+    const sunday = new Date('2026-10-18T00:00:00Z');
+    const monday = new Date('2026-10-19T00:00:00Z');
+
+    // When rules array is empty, Sunday should default to weekly holiday
+    expect(isWeeklyHoliday(sunday, [])).toBe(true);
+    // Monday should NOT be a weekly holiday
+    expect(isWeeklyHoliday(monday, [])).toBe(false);
+
+    // 18 Oct 2026 to 01 Nov 2026 = 15 calendar days (with 3 Sundays: 18 Oct, 25 Oct, 01 Nov)
+    const startDate = new Date('2026-10-18T00:00:00Z');
+    const endDate = new Date('2026-11-01T00:00:00Z');
+
+    const days = countWorkingDays(startDate, endDate, [], []);
+    expect(days).toBe(12); // 15 calendar days - 3 Sundays = 12 working days
+  });
 });
