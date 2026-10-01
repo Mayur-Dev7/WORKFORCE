@@ -479,32 +479,43 @@ export const HolidaysPage: React.FC = () => {
                     <Text>Loading weekly schedule...</Text>
                   ) : (
                     <Row gutter={[10, 10]} style={{ marginBottom: 20 }}>
-                      {DAY_NAMES.map((name, idx) => (
-                        <Col key={idx} xs={12} sm={8} md={6} lg={4}>
-                          <Card
-                            size="small"
-                            style={{
-                              borderRadius: 10,
-                              border: activeDays.has(idx) ? '2px solid #1677ff' : '1px solid #e5e7eb',
-                              background: activeDays.has(idx) ? '#eff6ff' : '#ffffff',
-                              textAlign: 'center',
-                              cursor: canManage ? 'pointer' : 'default',
-                              transition: 'all 0.15s ease',
-                              padding: '4px 0',
-                            }}
-                            onClick={() => canManage && toggleDay(idx)}
-                          >
-                            <Checkbox
-                              checked={activeDays.has(idx)}
-                              onChange={() => canManage && toggleDay(idx)}
+                      {DAY_NAMES.map((name, idx) => {
+                        const isSelected = activeDays.has(idx);
+                        return (
+                          <Col key={idx} xs={12} sm={8} md={6} lg={4}>
+                            <button
+                              type="button"
                               disabled={!canManage}
-                              style={{ width: '100%', justifyContent: 'center' }}
+                              onClick={() => canManage && toggleDay(idx)}
+                              style={{
+                                width: '100%',
+                                minHeight: 48,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 8,
+                                padding: '10px 14px',
+                                borderRadius: 10,
+                                border: isSelected ? '2px solid #1677ff' : '1px solid #e5e7eb',
+                                background: isSelected ? '#eff6ff' : '#ffffff',
+                                cursor: canManage ? 'pointer' : 'default',
+                                transition: 'all 0.15s ease',
+                                outline: 'none',
+                                userSelect: 'none',
+                              }}
                             >
-                              <Text strong style={{ fontSize: 14 }}>{name}</Text>
-                            </Checkbox>
-                          </Card>
-                        </Col>
-                      ))}
+                              <Checkbox
+                                checked={isSelected}
+                                disabled={!canManage}
+                                style={{ pointerEvents: 'none' }}
+                              />
+                              <Text strong style={{ fontSize: 14, color: isSelected ? '#1677ff' : '#1e293b' }}>
+                                {name}
+                              </Text>
+                            </button>
+                          </Col>
+                        );
+                      })}
                     </Row>
                   )}
 
@@ -525,10 +536,7 @@ export const HolidaysPage: React.FC = () => {
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         Current non-working days:{' '}
                         <strong>
-                          {weeklyRules
-                            .filter((r) => r.is_active)
-                            .map((r) => DAY_NAMES[r.day_of_week])
-                            .join(', ') || 'None'}
+                          {[...new Set(weeklyRules.filter((r) => r.is_active).map((r) => DAY_NAMES[r.day_of_week]))].join(', ') || 'None'}
                         </strong>
                       </Text>
                     </div>
