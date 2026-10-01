@@ -1,33 +1,17 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Card,
-  Button,
-  Alert,
-  Space,
-  Typography,
-  Tag,
-  Divider,
-  Steps,
-  Progress,
-  message,
-} from 'antd';
-import {
-  CheckCircleFilled,
-  CloseCircleFilled,
-  CameraOutlined,
-  EnvironmentOutlined,
-  SmileOutlined,
-  SafetyCertificateOutlined,
-  ReloadOutlined,
-} from '@ant-design/icons';
+import { message } from 'antd';
 import { useAuth } from '../../context/AuthContext.js';
 import { useLocationWarmup, VerificationResult } from '../../context/LocationContext.js';
 import { api } from '../../services/api.js';
 import { analyzeVideoFrame, evaluateFaceMatch } from '../../services/face.client.js';
 import { Office, ApiResponse, AttendanceSession } from '@workforce/shared';
 
-const { Title, Text, Paragraph } = Typography;
+import { CompactAlert } from '../../components/checkin/CompactAlert.js';
+import { CameraFeed } from '../../components/checkin/CameraFeed.js';
+import { FaceMatchFeedback } from '../../components/checkin/FaceMatchFeedback.js';
+import { ReferenceFaceCard } from '../../components/checkin/ReferenceFaceCard.js';
+import { VerificationPanel } from '../../components/checkin/VerificationPanel.js';
 
 export const CheckInPage: React.FC = () => {
   const { user, refreshUser } = useAuth();
@@ -62,7 +46,7 @@ export const CheckInPage: React.FC = () => {
   // Request & Submission state
   const [submitting, setSubmitting] = useState(false);
   const [resultError, setResultError] = useState<{ title: string; message: string } | null>(null);
-  const [livenessInstruction, setLivenessInstruction] = useState('Position face inside oval');
+  const [livenessInstruction, setLivenessInstruction] = useState('Position face inside frame');
 
   // Sync office state with cachedOffice whenever it updates
   useEffect(() => {
@@ -83,7 +67,7 @@ export const CheckInPage: React.FC = () => {
       if (result.office) setOffice(result.office);
     } catch (err: any) {
       setResultError({
-        title: 'Location Verification Failed',
+        title: 'Location Unavailable',
         message: err.message || 'Could not verify GPS coordinates against office geofence.',
       });
       setInsideGeofence(false);
@@ -113,7 +97,7 @@ export const CheckInPage: React.FC = () => {
         }
       }
 
-      // 2. Fetch reference face template if not already in cache
+      // 3. Fetch reference face template if not already in cache
       if (!cachedFaceTemplate) {
         api.get('/users/self/face-template')
           .then((faceRes) => {
@@ -129,10 +113,10 @@ export const CheckInPage: React.FC = () => {
           .catch((e) => console.warn('Could not fetch reference face', e));
       }
 
-      // 3. Fast location verification in parallel (instant match against open-app snapshot)
+      // 4. Fast location verification in parallel
       verifyLocation(false);
 
-      // 4. Start webcam in parallel
+      // 5. Start webcam in parallel
       try {
         const userMedia = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
@@ -149,7 +133,7 @@ export const CheckInPage: React.FC = () => {
         if (active) {
           setResultError({
             title: 'Camera Access Denied',
-            message: 'Camera permission is required for face biometric check-in.',
+            message: 'Camera permission is required for face biometric check-in. Please allow browser camera access.',
           });
         }
       }
@@ -195,11 +179,11 @@ export const CheckInPage: React.FC = () => {
             if (!referenceEmbedding) {
               setLivenessInstruction('No reference face template enrolled');
             } else if (!evalResult.matched) {
-              setLivenessInstruction(`Face mismatch (${evalResult.displayPercentage}% match) — does not match ${user?.name}`);
+              setLivenessInstruction(`Face mismatch (${evalResult.displayPercentage}% match)`);
             } else if (!livenessOk) {
-              setLivenessInstruction(`Identity verified (${evalResult.displayPercentage}%) — please blink or nod`);
+              setLivenessInstruction('Please blink or nod to confirm liveness');
             } else {
-              setLivenessInstruction(`Identity & Liveness Verified (${evalResult.displayPercentage}% match) ✓`);
+              setLivenessInstruction('Identity & Liveness Verified ✓');
             }
           } else if (detection.faceCount > 1) {
             setFaceDetected(false);
@@ -208,7 +192,7 @@ export const CheckInPage: React.FC = () => {
           } else {
             setFaceDetected(false);
             setFaceMatched(false);
-            setLivenessInstruction('Center your face in the oval');
+            setLivenessInstruction('Position your face inside the frame');
           }
         }
       }
@@ -239,7 +223,7 @@ export const CheckInPage: React.FC = () => {
     setResultError(null);
 
     try {
-      const res = await api.post<ApiResponse<AttendanceSession>>('/attendance/check-in', {
+      await api.post<ApiResponse<AttendanceSession>>('/attendance/check-in', {
         employeeCodeOrEmail: user!.employee_code,
         latitude: userCoords.lat,
         longitude: userCoords.lon,
@@ -258,7 +242,7 @@ export const CheckInPage: React.FC = () => {
       const msg = errData?.message || err.message || 'Check-in failed';
 
       setResultError({
-        title: `CHECK-IN REJECTED [${code}]`,
+        title: `Check-In Rejected [${code}]`,
         message: msg,
       });
     } finally {
@@ -266,340 +250,94 @@ export const CheckInPage: React.FC = () => {
     }
   };
 
-  const isReadyToSubmit =
-    faceDetected &&
-    faceMatched &&
-    livenessPassed &&
-    insideGeofence === true &&
-    !submitting;
+  const handleNavigateToEnrollment = () => {
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    navigate('/employee/face-enrollment');
+  };
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto' }}>
-      <Card style={{ borderRadius: 16 }}>
-        <Title level={3} style={{ marginBottom: 4 }}>
-          Employee Face Verification & Geofenced Check-In
-        </Title>
-        <Text type="secondary">
-          Assigned Office: <strong>{office?.name || 'Locating office...'}</strong> (Allowed Radius: {office?.radius_meters || 150}m)
-        </Text>
-
-        <Divider style={{ margin: '16px 0 24px' }} />
-
-        {resultError && (
-          <Alert
-            message={resultError.title}
-            description={
-              <div>
-                <div>{resultError.message}</div>
-                {resultError.title.includes('FACE_MISMATCH') && (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ marginBottom: 8, fontSize: 13, color: '#a8071a' }}>
-                      <strong>Why this happened:</strong> Your live webcam face was compared against the seeded reference photo of Alex Mercer shown below. To check in with your own face, please register your face template first:
-                    </div>
-                    <Button
-                      type="primary"
-                      danger
-                      onClick={() => {
-                        if (stream) stream.getTracks().forEach((t) => t.stop());
-                        navigate('/employee/face-enrollment');
-                      }}
-                    >
-                      📸 Register / Update My Face Now
-                    </Button>
-                  </div>
-                )}
-              </div>
-            }
-            type="error"
-            showIcon
-            style={{ marginBottom: 24, fontSize: 15 }}
-          />
-        )}
-
-        {!user?.face_enrolled && (
-          <Alert
-            type="warning"
-            showIcon
-            message="No Reference Face Enrolled"
-            description={
-              <span>
-                You must upload or capture your official reference photo before you can check in.{' '}
-                <Button
-                  type="primary"
-                  size="small"
-                  onClick={() => navigate('/employee/face-enrollment')}
-                >
-                  Upload Reference Face
-                </Button>
-              </span>
-            }
-            style={{ marginBottom: 20 }}
-          />
-        )}
-
-        <div className="checkin-grid">
-          {/* Left: Video / Camera Area */}
-          <div>
-            <div className="camera-container">
-              <video ref={videoRef} playsInline muted className="camera-video" />
-
-              <div
-                className={`face-guide-overlay ${
-                  faceDetected ? (faceMatched && livenessPassed ? 'detected' : 'warning') : ''
-                }`}
-              />
-
-              <div className="camera-status-badge">
-                {cameraReady ? (
-                  <Tag color="success">Live Camera Active</Tag>
-                ) : (
-                  <Tag color="default">Initializing Camera...</Tag>
-                )}
-              </div>
-
-              <div className="liveness-instruction-box">{livenessInstruction}</div>
-            </div>
-
-            {/* Reference Face Comparison Badge / Card */}
-            {referenceImage && (
-              <div
-                style={{
-                  marginTop: 16,
-                  padding: 12,
-                  background: '#f0f5ff',
-                  border: '1px solid #adc6ff',
-                  borderRadius: 10,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 16,
-                }}
-              >
-                <img
-                  src={referenceImage}
-                  alt="Reference Face"
-                  style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: 8,
-                    objectFit: 'cover',
-                    border: '2px solid #2f54eb',
-                  }}
-                />
-                <div>
-                  <Text strong style={{ color: '#1d39c4' }}>
-                    Uploaded Reference Template
-                  </Text>
-                  <br />
-                  <Text type="secondary" style={{ fontSize: 13 }}>
-                    Live webcam biometric scan is matched 1:1 against this uploaded reference face.
-                  </Text>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right: Real-time Multi-factor Verification Steps */}
-          <div>
-            <Card
-              size="small"
-              title="Identity & Access Checklist"
-              style={{ background: '#fafafa', borderRadius: 12, height: '100%' }}
-            >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* 1. Identity */}
-                <div className="status-step-item">
-                  <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
-                  <div>
-                    <Text strong>Employee Identity</Text>
-                    <br />
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {user?.name} ({user?.employee_code})
-                    </Text>
-                  </div>
-                </div>
-
-                {/* 2. Reference Face Template */}
-                <div className="status-step-item">
-                  {user?.face_enrolled ? (
-                    <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
-                  ) : (
-                    <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18 }} />
-                  )}
-                  <div>
-                    <Text strong>Reference Face Enrolled</Text>
-                    <br />
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {user?.face_enrolled ? 'Reference photo stored ✓' : 'Upload photo required'}
-                    </Text>
-                  </div>
-                </div>
-
-                {/* 3. Camera Face Detection & Clarity */}
-                <div className="status-step-item">
-                  {faceDetected ? (
-                    <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
-                  ) : (
-                    <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18 }} />
-                  )}
-                  <div>
-                    <Text strong>Live Camera Face Detection</Text>
-                    <br />
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {faceDetected
-                        ? `Live face detected in frame (Clarity: ${(qualityScore * 100).toFixed(0)}%)`
-                        : 'No face in camera view'}
-                    </Text>
-                  </div>
-                </div>
-
-                {/* 4. 1:1 Biometric Identity Match */}
-                <div className="status-step-item">
-                  {faceMatched ? (
-                    <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
-                  ) : (
-                    <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18 }} />
-                  )}
-                  <div>
-                    <Text strong>Biometric Identity Match (1:1)</Text>
-                    <br />
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        color: faceMatched ? '#52c41a' : '#cf1322',
-                        fontWeight: '500',
-                      }}
-                    >
-                      {!user?.face_enrolled
-                        ? 'Reference photo required'
-                        : !faceDetected
-                        ? 'Position face to verify'
-                        : faceMatched
-                        ? `Identity Verified: ${faceSimilarity}% match with ${user?.name} ✓`
-                        : `Face Mismatch: ${faceSimilarity}% match (Does not match ${user?.name})`}
-                    </Text>
-                  </div>
-                </div>
-
-                {/* 5. Liveness Anti-Spoof */}
-                <div className="status-step-item">
-                  {livenessPassed ? (
-                    <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
-                  ) : (
-                    <CloseCircleFilled style={{ color: '#faad14', fontSize: 18 }} />
-                  )}
-                  <div>
-                    <Text strong>Liveness Anti-Spoof Check</Text>
-                    <br />
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {livenessPassed ? `Score: ${(livenessScore * 100).toFixed(0)}% ✓` : 'Awaiting motion/blink'}
-                    </Text>
-                  </div>
-                </div>
-
-                {/* 6. GPS Accuracy */}
-                <div className="status-step-item">
-                  {userCoords && userCoords.accuracy <= 100 ? (
-                    <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
-                  ) : (
-                    <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18 }} />
-                  )}
-                  <div>
-                    <Text strong>GPS Accuracy</Text>
-                    <br />
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {userCoords
-                        ? `+/- ${Math.round(userCoords.accuracy)}m (Max 100m)`
-                        : locationChecking
-                        ? 'Acquiring GPS fix...'
-                        : 'GPS unavailable'}
-                    </Text>
-                  </div>
-                </div>
-
-                {/* 7. Office Geofence */}
-                <div className="status-step-item" style={{ alignItems: 'flex-start' }}>
-                  {insideGeofence === true ? (
-                    <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18, marginTop: 2 }} />
-                  ) : (
-                    <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18, marginTop: 2 }} />
-                  )}
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
-                      <Text strong>Office Geofence</Text>
-                      {locationVerification?.matchType === 'instant_match' && (
-                        <Tag color="success" style={{ margin: 0, fontSize: 11, borderRadius: 10 }}>
-                          ⚡ Instant Match ({locationVerification.latencyMs}ms)
-                        </Tag>
-                      )}
-                      {locationVerification?.matchType === 'fresh_geofence_match' && (
-                        <Tag color="processing" style={{ margin: 0, fontSize: 11, borderRadius: 10 }}>
-                          📍 Live GPS ({locationVerification.latencyMs}ms)
-                        </Tag>
-                      )}
-                      {locationVerification?.matchType === 'outside_geofence' && (
-                        <Tag color="error" style={{ margin: 0, fontSize: 11, borderRadius: 10 }}>
-                          Outside Geofence
-                        </Tag>
-                      )}
-                    </div>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {locationChecking
-                        ? 'Verifying office location...'
-                        : distanceMeters !== null && office
-                        ? locationVerification?.matchType === 'instant_match'
-                          ? `Inside office (${distanceMeters}m from center, matched with app launch)`
-                          : insideGeofence
-                          ? `Inside office (${distanceMeters}m from center, Max ${office.radius_meters}m)`
-                          : `${distanceMeters}m from office (Allowed: ${office.radius_meters}m)`
-                        : 'Awaiting location check'}
-                    </Text>
-                  </div>
-                  <Button
-                    size="small"
-                    type="text"
-                    icon={<ReloadOutlined spin={locationChecking} />}
-                    onClick={() => verifyLocation(true)}
-                    title="Force refresh GPS"
-                    style={{ color: '#1677ff', padding: '0 4px' }}
-                  />
-                </div>
-              </div>
-
-              <Divider style={{ margin: '16px 0' }} />
-
-              {/* Submission Button */}
-              <Button
-                type="primary"
-                size="large"
-                block
-                icon={<SafetyCertificateOutlined />}
-                disabled={!isReadyToSubmit}
-                loading={submitting}
-                style={{
-                  height: 50,
-                  fontSize: 15,
-                  borderRadius: 8,
-                  background: isReadyToSubmit ? '#16a34a' : undefined,
-                  borderColor: isReadyToSubmit ? '#16a34a' : undefined,
-                }}
-                onClick={handlePerformCheckIn}
-              >
-                {insideGeofence === false
-                  ? 'OUTSIDE GEOFENCE'
-                  : !user?.face_enrolled
-                  ? 'ENROLL FACE FIRST'
-                  : !faceDetected
-                  ? 'POSITION FACE IN OVAL'
-                  : !faceMatched
-                  ? 'FACE MISMATCH — CANNOT CHECK IN'
-                  : !livenessPassed
-                  ? 'AWAITING LIVENESS CHECK'
-                  : 'CONFIRM CHECK-IN'}
-              </Button>
-            </Card>
-          </div>
+    <div className="apple-checkin-wrapper">
+      {/* ─── 1. Page Header (Clean, typography-driven, no huge card wrapper) ─── */}
+      <header className="apple-checkin-header">
+        <h1 className="apple-checkin-title">Employee Check-In</h1>
+        <p className="apple-checkin-subtitle">
+          Face verification and office location are checked before attendance is recorded.
+        </p>
+        <div className="apple-checkin-office-chip">
+          <span>Assigned Office:</span>
+          <strong>{office?.name || 'Locating office...'}</strong>
+          <span>· Allowed radius {office?.radius_meters || 150} m</span>
         </div>
-      </Card>
+      </header>
+
+      {/* ─── 2. Compact Inline System Alert (Only when error occurs) ─── */}
+      {resultError && (
+        <CompactAlert
+          type="error"
+          title={resultError.title}
+          message={resultError.message}
+          actionText={resultError.title.includes('FACE_MISMATCH') ? 'Update Face' : 'Try Again'}
+          onAction={() => {
+            if (resultError.title.includes('FACE_MISMATCH')) {
+              handleNavigateToEnrollment();
+            } else {
+              setResultError(null);
+              verifyLocation(true);
+            }
+          }}
+        />
+      )}
+
+      {/* ─── 3. Main Verification Area (Two-Column Desktop Layout) ─── */}
+      <div className="apple-checkin-grid">
+        {/* Left Column (~60%): Camera + Face Match Feedback + Reference Face */}
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <CameraFeed
+            videoRef={videoRef}
+            cameraReady={cameraReady}
+            faceDetected={faceDetected}
+            faceMatched={faceMatched}
+            livenessPassed={livenessPassed}
+            livenessInstruction={livenessInstruction}
+          />
+
+          <FaceMatchFeedback
+            faceDetected={faceDetected}
+            faceMatched={faceMatched}
+            faceSimilarity={faceSimilarity}
+            expectedName={user?.name}
+            expectedCode={user?.employee_code}
+            faceEnrolled={user?.face_enrolled}
+          />
+
+          <ReferenceFaceCard
+            referenceImage={referenceImage}
+            faceEnrolled={Boolean(user?.face_enrolled)}
+            onUpdate={handleNavigateToEnrollment}
+          />
+        </div>
+
+        {/* Right Column (~40%): Verification Sequence & Primary Action */}
+        <VerificationPanel
+          user={user}
+          office={office}
+          faceDetected={faceDetected}
+          qualityScore={qualityScore}
+          faceMatched={faceMatched}
+          faceSimilarity={faceSimilarity}
+          livenessPassed={livenessPassed}
+          livenessScore={livenessScore}
+          userCoords={userCoords}
+          distanceMeters={distanceMeters}
+          insideGeofence={insideGeofence}
+          locationChecking={locationChecking}
+          locationVerification={locationVerification}
+          submitting={submitting}
+          onCheckIn={handlePerformCheckIn}
+          onRefreshLocation={() => verifyLocation(true)}
+          onNavigateToEnrollment={handleNavigateToEnrollment}
+        />
+      </div>
     </div>
   );
 };

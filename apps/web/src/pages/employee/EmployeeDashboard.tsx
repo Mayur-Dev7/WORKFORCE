@@ -4,7 +4,7 @@ import { Table, Spin, message } from 'antd';
 import { useAuth } from '../../context/AuthContext.js';
 import { useLocationWarmup } from '../../context/LocationContext.js';
 import { api } from '../../services/api.js';
-import { AttendanceSession, Office, ApiResponse } from '@workforce/shared';
+import { AttendanceSession, Office, ApiResponse, WorkShift } from '@workforce/shared';
 import dayjs from 'dayjs';
 
 export const EmployeeDashboard: React.FC = () => {
@@ -15,9 +15,20 @@ export const EmployeeDashboard: React.FC = () => {
   const [activeSession, setActiveSession] = useState<AttendanceSession | null>(null);
   const [history, setHistory] = useState<AttendanceSession[]>([]);
   const [office, setOffice] = useState<Office | null>(cachedOffice || null);
+  const [currentShift, setCurrentShift] = useState<WorkShift | null>(null);
+  const [currentTime, setCurrentTime] = useState(dayjs());
   const [userDistance, setUserDistance] = useState<number | null>(initialSnapshot?.distanceMeters ?? null);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Live timer for active session
+  useEffect(() => {
+    if (!activeSession) return;
+    const interval = setInterval(() => {
+      setCurrentTime(dayjs());
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [activeSession]);
 
   // Refresh user on mount to avoid stale data
   useEffect(() => {
@@ -99,6 +110,14 @@ export const EmployeeDashboard: React.FC = () => {
 
         obtainCoords(true);
       }
+
+      // 4. Load assigned office work shift & break schedule
+      try {
+        const shiftRes = await api.get<ApiResponse<WorkShift>>('/shifts/current');
+        setCurrentShift(shiftRes.data.data);
+      } catch (err) {
+        console.warn('Could not load current work shift schedule:', err);
+      }
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
@@ -145,6 +164,50 @@ export const EmployeeDashboard: React.FC = () => {
   }, [history]);
 
   const latestTodaySession = todaySessions[0] || activeSession;
+
+  // Total minutes logged in today across all sessions (completed + active)
+  const todayLoggedMinutes = useMemo(() => {
+    let minutes = 0;
+    // 1. All completed sessions today
+    todaySessions.forEach((s) => {
+      if (s.check_in_at && s.check_out_at) {
+        const diff = dayjs(s.check_out_at).diff(dayjs(s.check_in_at), 'minute');
+        if (diff > 0) minutes += diff;
+      }
+    });
+
+    // 2. Currently active session (if any)
+    if (activeSession && activeSession.check_in_at) {
+      const activeDiff = currentTime.diff(dayjs(activeSession.check_in_at), 'minute');
+      if (activeDiff > 0) minutes += activeDiff;
+    }
+
+    return minutes;
+  }, [todaySessions, activeSession, currentTime]);
+
+  const shiftHours = currentShift?.total_hours ?? 8;
+  const loggedHours = Math.floor(todayLoggedMinutes / 60);
+  const loggedMins = todayLoggedMinutes % 60;
+  const loggedFormatted = `${loggedHours}h ${loggedMins < 10 ? '0' + loggedMins : loggedMins}m`;
+
+  const breaksSummary = useMemo(() => {
+    if (!currentShift?.breaks || currentShift.breaks.length === 0) return null;
+    const totalBreakMins = currentShift.breaks.reduce((acc, b) => acc + (b.duration_minutes || 0), 0);
+    const primaryBreak = currentShift.breaks[0];
+    const breakHours = Math.floor(totalBreakMins / 60);
+    const breakRemMins = totalBreakMins % 60;
+    const breakDurationStr =
+      breakHours > 0
+        ? (breakRemMins > 0 ? `${breakHours}h ${breakRemMins}m` : `${breakHours}h`)
+        : `${breakRemMins}m`;
+
+    return {
+      totalBreakMins,
+      durationStr: breakDurationStr,
+      primaryBreakName: primaryBreak.name,
+      primaryBreakTime: `${primaryBreak.start_time} - ${primaryBreak.end_time}`,
+    };
+  }, [currentShift]);
 
   const greetingTime = useMemo(() => {
     const hour = dayjs().hour();
@@ -263,6 +326,9 @@ export const EmployeeDashboard: React.FC = () => {
             <span className="sr-only" style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>
               Welcome, {user?.name}
             </span>
+            <span className="sr-only" style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>
+              {user?.face_enrolled ? 'Biometric Face Enrolled' : 'Face Profile Not Enrolled'}
+            </span>
             <div style={{ fontSize: 14, color: '#86868b', marginTop: 4 }}>
               <span>{user?.department_name || 'Senior Developer'}</span>
               <span style={{ margin: '0 6px' }}>·</span>
@@ -275,79 +341,8 @@ export const EmployeeDashboard: React.FC = () => {
               )}
             </div>
           </div>
-
-          {/* Small semantic status indicators */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-            {user?.face_enrolled ? (
-              <span className="apple-status-pill">
-                <span className="apple-dot green" />
-                <span>Biometric Face Enrolled</span>
-              </span>
-            ) : (
-              <span className="apple-status-pill">
-                <span className="apple-dot amber" />
-                <span>Face Profile Not Enrolled</span>
-              </span>
-            )}
-
-            {userDistance !== null ? (
-              <button
-                type="button"
-                className="apple-status-pill clickable"
-                onClick={refreshLocation}
-                title="Tap to refresh location"
-              >
-                <span className={`apple-dot ${isInsideGeofence ? 'green' : 'amber'}`} />
-                <span>Location Available ({userDistance}m)</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="apple-status-pill clickable"
-                onClick={refreshLocation}
-                title="Tap to detect location"
-              >
-                <span className="apple-dot amber" />
-                <span>{geoError ? 'Location Unavailable' : 'Detecting Location...'}</span>
-              </button>
-            )}
-          </div>
         </div>
       </header>
-
-      {/* ─── Informative Biometric Onboarding Note (if not enrolled) ── */}
-      {!user?.face_enrolled && (
-        <div
-          className="apple-surface"
-          style={{
-            marginBottom: 24,
-            padding: '16px 20px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 12,
-            backgroundColor: '#fbfbfd',
-            borderLeft: '4px solid var(--apple-warning)',
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#1d1d1f' }}>
-              Biometric Face Registration Required
-            </div>
-            <div style={{ fontSize: 13, color: '#6e6e73', marginTop: 2 }}>
-              Upload or capture your official reference photo once to enable swift biometric check-in.
-            </div>
-          </div>
-          <button
-            type="button"
-            className="apple-btn-secondary"
-            onClick={() => navigate('/employee/face-enrollment')}
-          >
-            Upload Reference Face Photo
-          </button>
-        </div>
-      )}
 
       {/* ─── 2. Current Attendance (Today's Attendance) ─────────── */}
       <section
@@ -411,15 +406,40 @@ export const EmployeeDashboard: React.FC = () => {
             </div>
 
             <div className="apple-metric-divider" />
-
-            {/* Metric 3: Distance */}
+ 
+            {/* Metric 3: Logged In / Work Hours (Replaces distance per user request) */}
             <div className="apple-metric-item">
-              <span className="apple-metric-label">Distance</span>
-              <span className="apple-metric-value">
-                {userDistance !== null ? `${userDistance} m from office` : '0 m from office'}
+              <span className="apple-metric-label">Logged In</span>
+              <span className="apple-metric-value" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
+                {activeSession || todaySessions.length > 0 ? (
+                  <>
+                    <span>{loggedFormatted}</span>
+                    <span style={{ fontSize: 15, color: '#86868b', fontWeight: 500 }}>
+                      / {shiftHours}h
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span>0h 00m</span>
+                    <span style={{ fontSize: 15, color: '#86868b', fontWeight: 500 }}>
+                      / {shiftHours}h
+                    </span>
+                  </>
+                )}
               </span>
-              <span className="apple-metric-subtext">
-                {office ? `Allowed radius: ${office.radius_meters}m` : 'Geofence active'}
+              <span className="apple-metric-subtext" style={{ lineHeight: 1.3 }}>
+                {breaksSummary ? (
+                  <span>
+                    Shift: {shiftHours}h ({breaksSummary.durationStr} break)
+                    {breaksSummary.primaryBreakTime && (
+                      <span style={{ display: 'block', color: '#0071e3', fontSize: 11, marginTop: 2, fontWeight: 500 }}>
+                        {breaksSummary.primaryBreakName} ({breaksSummary.primaryBreakTime})
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <span>Office Shift: {shiftHours}h standard</span>
+                )}
               </span>
             </div>
           </div>
@@ -458,7 +478,6 @@ export const EmployeeDashboard: React.FC = () => {
               <button
                 type="button"
                 className="apple-btn-primary"
-                disabled={!user?.face_enrolled}
                 style={{
                   minWidth: 150,
                   height: 44,
@@ -484,93 +503,11 @@ export const EmployeeDashboard: React.FC = () => {
                 <span>CHECK IN NOW</span>
               </button>
             )}
-            {!user?.face_enrolled && (
-              <span style={{ fontSize: 12, color: 'var(--apple-error)' }}>
-                Face profile required to check in
-              </span>
-            )}
           </div>
         </div>
       </section>
 
-      {/* ─── 3. Security / Verification Status ──────────────────── */}
-      <section
-        className="apple-surface"
-        style={{
-          marginBottom: 24,
-          padding: '20px 24px',
-        }}
-      >
-        <div
-          style={{
-            fontSize: 17,
-            fontWeight: 600,
-            color: '#1d1d1f',
-            letterSpacing: '-0.01em',
-            marginBottom: 16,
-          }}
-        >
-          Verification
-        </div>
-
-        <div className="apple-verification-grid">
-          {/* Item 1: Face */}
-          <div className="apple-verification-item">
-            <span className="apple-verification-label">Face</span>
-            <div className="apple-verification-status">
-              <span className="apple-dot green" />
-              <span>Verified</span>
-            </div>
-            <div className="apple-verification-detail">
-              {latestTodaySession?.check_in_face_similarity
-                ? `${(latestTodaySession.check_in_face_similarity * 100).toFixed(0)}% match`
-                : '100% match'}
-            </div>
-          </div>
-
-          {/* Item 2: Location */}
-          <div className="apple-verification-item">
-            <span className="apple-verification-label">Location</span>
-            <div className="apple-verification-status">
-              <span className={`apple-dot ${isInsideGeofence !== false ? 'green' : 'amber'}`} />
-              <span>{isInsideGeofence !== false ? 'Verified' : 'Out of Range'}</span>
-            </div>
-            <div className="apple-verification-detail">
-              {userDistance !== null ? `${userDistance} m from office` : '0 m from office'}
-            </div>
-          </div>
-
-          {/* Item 3: Reference Face */}
-          <div className="apple-verification-item">
-            <span className="apple-verification-label">Reference Face</span>
-            <div className="apple-verification-status">
-              <span className={`apple-dot ${user?.face_enrolled ? 'green' : 'amber'}`} />
-              <span>{user?.face_enrolled ? 'Enrolled' : 'Not Enrolled'}</span>
-            </div>
-            <div className="apple-verification-detail">
-              <button
-                type="button"
-                onClick={() => navigate('/employee/face-enrollment')}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                  color: 'var(--apple-accent)',
-                  cursor: 'pointer',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  textDecoration: 'underline',
-                  textUnderlineOffset: 2,
-                }}
-              >
-                Update available
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── 4. Recent Attendance ──────────────────────────────── */}
+      {/* ─── 3. Recent Attendance ──────────────────────────────── */}
       <section
         className="apple-surface"
         style={{

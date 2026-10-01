@@ -49,6 +49,29 @@ describe('EmployeeDashboard Component Tests', () => {
           },
         });
       }
+      if (url.includes('/shifts/current')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: {
+              id: 'shift-1-uuid',
+              name: 'Standard 8-Hour Shift',
+              total_hours: 8,
+              start_time: '09:00',
+              end_time: '17:00',
+              breaks: [
+                {
+                  name: 'Lunch Break',
+                  start_time: '13:00',
+                  end_time: '14:00',
+                  duration_minutes: 60,
+                  is_paid: false,
+                },
+              ],
+            },
+          },
+        });
+      }
       return Promise.reject(new Error(`Unhandled URL: ${url}`));
     });
   });
@@ -65,6 +88,26 @@ describe('EmployeeDashboard Component Tests', () => {
       expect(screen.getByText('EMP-101')).toBeInTheDocument();
       expect(screen.getByText(/CHECK IN NOW/i)).toBeInTheDocument();
       expect(screen.getByText(/Biometric Face Enrolled/i)).toBeInTheDocument();
+    });
+  });
+
+  it('renders logged in work hours and office shift schedule instead of distance', async () => {
+    render(
+      <MemoryRouter>
+        <EmployeeDashboard />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      // Check that "Logged In" label is rendered
+      expect(screen.getByText('Logged In')).toBeInTheDocument();
+      // Check that shift target is rendered
+      expect(screen.getByText('/ 8h')).toBeInTheDocument();
+      expect(screen.getByText(/Shift: 8h/i)).toBeInTheDocument();
+      // Check that scheduled breaks are displayed
+      expect(screen.getByText(/Lunch Break/i)).toBeInTheDocument();
+      // Ensure "m from office" distance is NOT displayed in metrics
+      expect(screen.queryByText(/from office/i)).not.toBeInTheDocument();
     });
   });
 });

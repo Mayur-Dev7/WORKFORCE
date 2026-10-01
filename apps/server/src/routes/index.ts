@@ -9,6 +9,7 @@ import auditRoutes from './audit.routes.js';
 import rolesRoutes from './roles.routes.js';
 import leaveRoutes from './leave.routes.js';
 import holidaysRoutes from './holidays.routes.js';
+import shiftsRoutes from './shifts.routes.js';
 
 const apiV1Router = Router();
 
@@ -22,5 +23,6 @@ apiV1Router.use('/audit-logs', auditRoutes);
 apiV1Router.use('/roles', rolesRoutes);
 apiV1Router.use('/leave', leaveRoutes);
 apiV1Router.use('/holidays', holidaysRoutes);
+apiV1Router.use('/shifts', shiftsRoutes);
 
 export default apiV1Router;

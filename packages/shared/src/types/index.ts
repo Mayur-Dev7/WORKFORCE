@@ -266,3 +266,66 @@ export interface WeeklyHolidayRule {
   created_at: string;
   updated_at: string;
 }
+
+// ─── Work Shifts & Breaks ────────────────────────────────────────────────────
+
+export interface ShiftBreak {
+  id?: string;
+  shift_id?: string;
+  name: string;
+  start_time: string; // "13:00" or "13:00:00"
+  end_time: string;   // "14:00" or "14:00:00"
+  duration_minutes: number;
+  is_paid: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface WorkShift {
+  id: string;
+  company_id: string;
+  office_id: string | null;
+  name: string;
+  start_time: string; // "09:00"
+  end_time: string;   // "17:00"
+  total_hours: number;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+  breaks?: ShiftBreak[];
+  office_name?: string;
+}
+
+export interface CreateShiftDTO {
+  office_id?: string | null;
+  name: string;
+  start_time: string;
+  end_time: string;
+  total_hours: number;
+  is_default?: boolean;
+  breaks?: Array<{
+    name: string;
+    start_time: string;
+    end_time: string;
+    duration_minutes: number;
+    is_paid?: boolean;
+  }>;
+}
+
+export interface UpdateShiftDTO {
+  office_id?: string | null;
+  name?: string;
+  start_time?: string;
+  end_time?: string;
+  total_hours?: number;
+  is_default?: boolean;
+  breaks?: Array<{
+    id?: string;
+    name: string;
+    start_time: string;
+    end_time: string;
+    duration_minutes: number;
+    is_paid?: boolean;
+  }>;
+}
+

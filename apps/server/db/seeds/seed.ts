@@ -107,6 +107,10 @@ export async function runSeed(): Promise<void> {
       // Holiday Calendar
       { key: PermissionKey.HOLIDAY_READ, desc: 'View holiday calendar' },
       { key: PermissionKey.HOLIDAY_MANAGE, desc: 'Create, update and delete holidays and weekly rules' },
+
+      // Work Shifts & Breaks
+      { key: PermissionKey.SHIFT_READ, desc: 'View office work shifts and break schedules' },
+      { key: PermissionKey.SHIFT_MANAGE, desc: 'Configure office work hours and scheduled break intervals' },
     ];
 
     for (const p of allPermissions) {
@@ -173,6 +177,9 @@ export async function runSeed(): Promise<void> {
       PermissionKey.LEAVE_TYPE_MANAGE,
       PermissionKey.HOLIDAY_READ,
       PermissionKey.HOLIDAY_MANAGE,
+      // Work Shifts
+      PermissionKey.SHIFT_READ,
+      PermissionKey.SHIFT_MANAGE,
     ];
     await client.query(`
       INSERT INTO role_permissions (role_id, permission_id)
@@ -196,6 +203,8 @@ export async function runSeed(): Promise<void> {
       PermissionKey.LEAVE_READ_TEAM,
       PermissionKey.LEAVE_APPROVE,
       PermissionKey.HOLIDAY_READ,
+      // Work Shifts
+      PermissionKey.SHIFT_READ,
     ];
     await client.query(`
       INSERT INTO role_permissions (role_id, permission_id)
@@ -214,6 +223,8 @@ export async function runSeed(): Promise<void> {
       PermissionKey.LEAVE_APPLY,
       PermissionKey.LEAVE_READ_OWN,
       PermissionKey.HOLIDAY_READ,
+      // Work Shifts
+      PermissionKey.SHIFT_READ,
     ];
     await client.query(`
       INSERT INTO role_permissions (role_id, permission_id)

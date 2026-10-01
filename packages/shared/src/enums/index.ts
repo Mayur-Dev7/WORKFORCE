@@ -46,6 +46,10 @@ export enum PermissionKey {
   // Holiday Calendar
   HOLIDAY_READ = 'holiday:read',
   HOLIDAY_MANAGE = 'holiday:manage',
+
+  // Work Shifts & Office Hours
+  SHIFT_READ = 'shift:read',
+  SHIFT_MANAGE = 'shift:manage',
 }
 
 export enum ErrorCode {
@@ -115,6 +119,11 @@ export enum AuditAction {
   HOLIDAY_UPDATED = 'HOLIDAY_UPDATED',
   HOLIDAY_DELETED = 'HOLIDAY_DELETED',
   WEEKLY_RULE_UPDATED = 'WEEKLY_RULE_UPDATED',
+
+  // Work Shifts & Office Hours
+  SHIFT_CREATED = 'SHIFT_CREATED',
+  SHIFT_UPDATED = 'SHIFT_UPDATED',
+  SHIFT_DELETED = 'SHIFT_DELETED',
 }
 
 export enum LoginEventType {

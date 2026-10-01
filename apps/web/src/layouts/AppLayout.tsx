@@ -29,6 +29,7 @@ import {
   IdcardOutlined,
   CalendarOutlined,
   MenuOutlined,
+  ClockCircleOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.js';
 import { PermissionKey } from '@workforce/shared';
@@ -94,6 +95,7 @@ export const AppLayout: React.FC = () => {
     if (pathname.startsWith('/admin/roles')) return 'Roles & RBAC';
     if (pathname.startsWith('/admin/reports')) return 'Reports';
     if (pathname.startsWith('/admin/audit-logs')) return 'Audit Trail';
+    if (pathname.startsWith('/admin/shifts')) return 'Work Shifts & Breaks';
     return 'Dashboard';
   };
 
@@ -156,7 +158,8 @@ export const AppLayout: React.FC = () => {
       hasPermission(PermissionKey.OFFICE_READ) ||
       hasPermission(PermissionKey.REPORTS_READ) ||
       hasPermission(PermissionKey.LEAVE_READ_TEAM) ||
-      hasPermission(PermissionKey.HOLIDAY_READ);
+      hasPermission(PermissionKey.HOLIDAY_READ) ||
+      hasPermission(PermissionKey.SHIFT_READ);
 
     if (canViewAdmin) {
       const adminChildren: any[] = [];
@@ -165,6 +168,8 @@ export const AppLayout: React.FC = () => {
         adminChildren.push({ key: '/admin/users', icon: <TeamOutlined />, label: 'Employees', onClick: () => handleNavigation('/admin/users') });
       if (hasPermission(PermissionKey.OFFICE_READ))
         adminChildren.push({ key: '/admin/offices', icon: <EnvironmentOutlined />, label: 'Office Geofences', onClick: () => handleNavigation('/admin/offices') });
+      if (hasPermission(PermissionKey.SHIFT_READ))
+        adminChildren.push({ key: '/admin/shifts', icon: <ClockCircleOutlined />, label: 'Work Shifts & Breaks', onClick: () => handleNavigation('/admin/shifts') });
       if (hasPermission(PermissionKey.HOLIDAY_READ))
         adminChildren.push({ key: '/admin/holidays', icon: <CalendarOutlined />, label: 'Holidays', onClick: () => handleNavigation('/admin/holidays') });
       if (hasPermission(PermissionKey.REPORTS_READ))

@@ -19,6 +19,7 @@ import { ReportsPage } from '../pages/admin/ReportsPage.js';
 import { AuditLogsPage } from '../pages/admin/AuditLogsPage.js';
 import { LeaveManagementPage } from '../pages/admin/LeaveManagementPage.js';
 import { HolidaysPage } from '../pages/admin/HolidaysPage.js';
+import { ShiftsPage } from '../pages/admin/ShiftsPage.js';
 import { PermissionKey } from '@workforce/shared';
 import { useAuth } from '../context/AuthContext.js';
 
@@ -156,6 +157,14 @@ export const AppRoutes: React.FC = () => {
           element={
             <ProtectedRoute permission={PermissionKey.HOLIDAY_READ}>
               <HolidaysPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/shifts"
+          element={
+            <ProtectedRoute permission={PermissionKey.SHIFT_READ}>
+              <ShiftsPage />
             </ProtectedRoute>
           }
         />
