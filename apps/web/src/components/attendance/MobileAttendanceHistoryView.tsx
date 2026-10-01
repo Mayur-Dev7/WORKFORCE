@@ -71,14 +71,8 @@ export const MobileAttendanceHistoryView: React.FC<MobileAttendanceHistoryProps>
   // Calendar vs List view toggle
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
 
-  // Currently selected date for inline details
-  const [selectedDate, setSelectedDate] = useState<Dayjs>(() => {
-    const today = dayjs().startOf('day');
-    if (selectedMonth.isSame(today, 'month')) {
-      return today;
-    }
-    return selectedMonth.date(1);
-  });
+  // Currently selected date for inline details — null by default until explicitly tapped
+  const [selectedDate, setSelectedDate] = useState<Dayjs | null>(null);
 
   // Track if user explicitly opened progressive disclosure
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
@@ -89,19 +83,15 @@ export const MobileAttendanceHistoryView: React.FC<MobileAttendanceHistoryProps>
   // Month picker dropdown toggle
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
 
-  // When selectedMonth changes, update selectedDate to 1st of month (or today if current month)
+  // When selectedMonth changes, clear selectedDate so new month has no auto-selection
   React.useEffect(() => {
-    const today = dayjs().startOf('day');
-    if (selectedMonth.isSame(today, 'month')) {
-      setSelectedDate(today);
-    } else {
-      setSelectedDate(selectedMonth.date(1));
-    }
+    setSelectedDate(null);
     setShowTechnicalDetails(false);
   }, [selectedMonth]);
 
-  // Find day object for currently selected date
+  // Find day object for currently selected date (only when a date is explicitly selected)
   const activeDay = useMemo(() => {
+    if (!selectedDate) return null;
     return days.find((d) => d.date.isSame(selectedDate, 'day')) || null;
   }, [days, selectedDate]);
 
@@ -155,25 +145,27 @@ export const MobileAttendanceHistoryView: React.FC<MobileAttendanceHistoryProps>
         </div>
 
         {/* Calendar | List Segmented Toggle */}
-        <div className="apple-mobile-segmented" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={viewMode === 'calendar'}
-            className={`apple-mobile-seg-item ${viewMode === 'calendar' ? 'is-active' : ''}`}
-            onClick={() => setViewMode('calendar')}
-          >
-            Calendar
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={viewMode === 'list'}
-            className={`apple-mobile-seg-item ${viewMode === 'list' ? 'is-active' : ''}`}
-            onClick={() => setViewMode('list')}
-          >
-            List
-          </button>
+        <div className="apple-mobile-segmented-wrap">
+          <div className="apple-mobile-segmented" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === 'calendar'}
+              className={`apple-mobile-seg-item ${viewMode === 'calendar' ? 'is-active' : ''}`}
+              onClick={() => setViewMode('calendar')}
+            >
+              Calendar
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === 'list'}
+              className={`apple-mobile-seg-item ${viewMode === 'list' ? 'is-active' : ''}`}
+              onClick={() => setViewMode('list')}
+            >
+              List
+            </button>
+          </div>
         </div>
       </div>
 
@@ -244,7 +236,7 @@ export const MobileAttendanceHistoryView: React.FC<MobileAttendanceHistoryProps>
 
             {/* Calendar Days */}
             {days.map((d) => {
-              const isSelected = selectedDate.isSame(d.date, 'day');
+              const isSelected = Boolean(selectedDate && selectedDate.isSame(d.date, 'day'));
               const cellClasses = [
                 'apple-mobile-day-slot',
                 isSelected ? 'is-selected' : '',
