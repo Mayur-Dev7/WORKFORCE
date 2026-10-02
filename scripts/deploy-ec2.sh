@@ -63,7 +63,6 @@ docker run --rm \
     --env-file "${ENV_FILE}" \
     -e DB_HOST=postgres \
     -e DB_PORT=5432 \
-    -v "${APP_DIR}/apps/server/db:/app/apps/server/db" \
     "${BACKEND_IMAGE}:${IMAGE_TAG}" \
     sh -c "cd /app && node_modules/.bin/node-pg-migrate up --migrations-dir apps/server/db/migrations --database-url-env DATABASE_URL"
 
