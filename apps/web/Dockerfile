@@ -1,0 +1,38 @@
+# ── Stage 1: build ──────────────────────────────────────────────────────────
+FROM node:24-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json ./
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/web/package.json ./apps/web/
+
+# Install dependencies
+RUN npm ci --ignore-scripts
+
+# Copy source
+COPY packages/shared/ ./packages/shared/
+COPY apps/web/ ./apps/web/
+COPY tsconfig.base.json ./
+
+# Build shared, then web (production — no basicSsl plugin active in build)
+# VITE_API_URL is intentionally NOT set so it falls back to '/api/v1' (same origin)
+RUN npm run --workspace=packages/shared build \
+ && npm run --workspace=apps/web build
+
+# ── Stage 2: nginx runtime ───────────────────────────────────────────────────
+FROM nginx:1.27-alpine AS production
+
+# Remove default nginx config
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copy production nginx config
+COPY nginx/default.conf /etc/nginx/conf.d/default.conf
+
+# Copy built frontend assets
+COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
+
+EXPOSE 80 443
+
+CMD ["nginx", "-g", "daemon off;"]

@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches-ignore: [main]   # main handled by deploy.yml
+
+jobs:
+  test:
+    name: Typecheck & Tests
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (all workspaces)
+        run: npm run typecheck
+
+      - name: Test — server
+        run: npm run test:server -- --run
+        env:
+          # Skips DB-dependent tests if TEST_DATABASE_URL not available
+          NODE_ENV: test
+
+      - name: Test — web
+        run: npm run test:web -- --run
