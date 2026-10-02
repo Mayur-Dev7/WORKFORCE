@@ -44,16 +44,39 @@ git reset --hard origin/main
 chmod +x "${APP_DIR}/scripts/deploy-ec2.sh"
 chmod +x "${APP_DIR}/scripts/rollback-ec2.sh"
 
-# ── 3. Write deployment env file (image versions only) ────────────────────────
-# This file contains ONLY image references — no secrets.
-log "📝 Writing .env.deploy..."
-cat > "${DEPLOY_ENV}" << EOF
+# ── 3. Write deployment env file (image versions & safe DB URL) ───────────────
+# Compute safe, URL-encoded DATABASE_URL targeting the internal Docker service
+# "postgres:5432", overriding any localhost:5433 value in apps/server/.env.
+BACKEND_DATABASE_URL=$(node -e '
+  const fs = require("fs");
+  const envPath = process.argv[1];
+  let user = "workforce_admin", pass = "", name = "workforce_access_db";
+  if (fs.existsSync(envPath)) {
+    const content = fs.readFileSync(envPath, "utf8");
+    const get = (k) => {
+      const m = content.match(new RegExp(`^${k}=(.*)$`, "m"));
+      return m ? m[1].trim() : null;
+    };
+    user = get("DB_USER") || get("POSTGRES_USER") || user;
+    pass = get("DB_PASSWORD") || get("POSTGRES_PASSWORD") || pass;
+    name = get("DB_NAME") || get("POSTGRES_DB") || name;
+  }
+  process.stdout.write(`postgresql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@postgres:5432/${name}`);
+' "${ENV_FILE}" 2>/dev/null || echo "postgresql://workforce_admin@postgres:5432/workforce_access_db")
+
+log "📝 Writing .env.deploy with restricted 0600 permissions..."
+(
+  umask 077
+  cat > "${DEPLOY_ENV}" << EOF
 BACKEND_IMAGE=${BACKEND_IMAGE}
 FRONTEND_IMAGE=${FRONTEND_IMAGE}
 IMAGE_TAG=${IMAGE_TAG}
 PREVIOUS_TAG=${PREVIOUS_TAG}
+BACKEND_DATABASE_URL=${BACKEND_DATABASE_URL}
 DEPLOY_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 EOF
+)
+chmod 600 "${DEPLOY_ENV}"
 
 # ── 4. Login to ECR ───────────────────────────────────────────────────────────
 log "🔐 Logging in to ECR..."
