@@ -15,8 +15,9 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, permis
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <Spin size="large" tip="Verifying credentials..." />
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', gap: 12 }}>
+        <Spin size="large" />
+        <span style={{ color: '#8c8c8c', fontSize: 13 }}>Verifying credentials...</span>
       </div>
     );
   }

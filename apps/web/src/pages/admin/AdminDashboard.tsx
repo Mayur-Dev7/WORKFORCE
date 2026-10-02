@@ -171,8 +171,9 @@ export const AdminDashboard: React.FC = () => {
 
   if (loading && !stats) {
     return (
-      <div style={{ textAlign: 'center', padding: '100px 0' }}>
-        <Spin size="large" tip="Loading workforce telemetry..." />
+      <div style={{ textAlign: 'center', padding: '100px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+        <Spin size="large" />
+        <span style={{ color: '#8c8c8c', fontSize: 13 }}>Loading workforce telemetry...</span>
       </div>
     );
   }

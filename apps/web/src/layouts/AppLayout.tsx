@@ -42,13 +42,14 @@ const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
 
 export const AppLayout: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, logout, hasPermission } = useAuth();
+  const { token } = theme.useToken();
+
   const [collapsed, setCollapsed] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [adminExpanded, setAdminExpanded] = useState(() => location.pathname.startsWith('/admin'));
-  const { user, logout, hasPermission } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { token } = theme.useToken();
 
   useEffect(() => {
     if (location.pathname.startsWith('/admin')) {
