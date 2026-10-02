@@ -14,13 +14,23 @@ router.post('/logout', authController.logout);
 router.get('/me', requireAuth(), authController.me);
 router.get('/liveness-challenge', authController.getLivenessChallenge);
 
-// Firebase Auth routes (enabled in dual and firebase modes)
-if (getAuthProviderMode() !== 'legacy') {
-  router.use('/firebase', firebaseAuthRoutes);
-  router.post('/resolve-identifier', resolveIdentifierRateLimiter, (req, res, next) =>
+// Firebase Auth routes (enabled when AUTH_PROVIDER is dual or firebase)
+router.use('/firebase', (req, res, next) => {
+  if (getAuthProviderMode() === 'legacy') {
+    return next();
+  }
+  return firebaseAuthRoutes(req, res, next);
+});
+
+router.post('/resolve-identifier', (req, res, next) => {
+  if (getAuthProviderMode() === 'legacy') {
+    return next();
+  }
+  return resolveIdentifierRateLimiter(req, res, () =>
     firebaseAuthController.resolveIdentifier(req, res, next)
   );
-}
+});
 
 export default router;
+
 

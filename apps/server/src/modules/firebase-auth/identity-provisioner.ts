@@ -36,7 +36,7 @@ export class FirebaseIdentityProvisioner implements IdentityProvisioner {
 
     try {
       // 2. Link user in database (under transaction if dbClient provided)
-      await usersRepository.update(
+      const updatedUser = await usersRepository.update(
         user.id,
         {
           firebase_uid: user.id,
@@ -45,6 +45,11 @@ export class FirebaseIdentityProvisioner implements IdentityProvisioner {
         },
         dbClient
       );
+
+      if (!updatedUser) {
+        throw new Error(`User with ID ${user.id} not found in database for Firebase linking`);
+      }
+
 
       // 3. Generate initial set-password / password reset link
       let passwordResetLink: string | undefined;
