@@ -1,42 +1,51 @@
 #!/usr/bin/env bash
 # deploy-ec2.sh — runs on EC2 via AWS SSM
-# Called by GitHub Actions with env vars: BACKEND_IMAGE, FRONTEND_IMAGE, IMAGE_TAG
+# Invoked by GitHub Actions: deploy.yml Job 3
+# Required env vars (set by SSM caller): BACKEND_IMAGE  FRONTEND_IMAGE  IMAGE_TAG
 
 set -euo pipefail
 
 APP_DIR="/home/ubuntu/apps/WORKFORCE"
 COMPOSE_FILE="${APP_DIR}/docker/docker-compose.prod.yml"
+# Server-side secrets file — NEVER overwritten by this script
 ENV_FILE="${APP_DIR}/apps/server/.env"
+# Deployment state — image versions only, written each deploy
 DEPLOY_ENV="${APP_DIR}/.env.deploy"
 AWS_REGION="ap-south-1"
-HEALTH_URL="https://workforce.duckdns.org"
-BACKEND_HEALTH_URL="http://localhost:4000/health"  # checked via docker exec
+PUBLIC_URL="https://workforce.duckdns.org"
 
 log() { echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $*"; }
 
 # ── 0. Validate required env vars ────────────────────────────────────────────
-: "${BACKEND_IMAGE:?BACKEND_IMAGE must be set}"
-: "${FRONTEND_IMAGE:?FRONTEND_IMAGE must be set}"
-: "${IMAGE_TAG:?IMAGE_TAG must be set}"
+: "${BACKEND_IMAGE:?BACKEND_IMAGE must be set by the SSM caller}"
+: "${FRONTEND_IMAGE:?FRONTEND_IMAGE must be set by the SSM caller}"
+: "${IMAGE_TAG:?IMAGE_TAG must be set by the SSM caller}"
 
 log "🚀 Starting deployment of tag: ${IMAGE_TAG}"
 log "   Backend:  ${BACKEND_IMAGE}:${IMAGE_TAG}"
 log "   Frontend: ${FRONTEND_IMAGE}:${IMAGE_TAG}"
 
-# ── 1. Save previous tag for rollback ────────────────────────────────────────
+# ── 1. Save previous tag for rollback (before anything changes) ───────────────
 PREVIOUS_TAG=""
 if [ -f "${DEPLOY_ENV}" ]; then
-    PREVIOUS_TAG=$(grep '^IMAGE_TAG=' "${DEPLOY_ENV}" | cut -d= -f2 || true)
+    PREVIOUS_TAG=$(grep '^IMAGE_TAG=' "${DEPLOY_ENV}" 2>/dev/null | cut -d= -f2 || true)
     log "   Previous tag: ${PREVIOUS_TAG:-<none>}"
 fi
 
-# ── 2. Update repository ─────────────────────────────────────────────────────
+# ── 2. Update repository ──────────────────────────────────────────────────────
+# git reset --hard updates tracked files (Dockerfiles, compose, scripts etc.)
+# It does NOT touch untracked files, so apps/server/.env and .env.deploy are safe.
+# Both files are in .gitignore so git will never touch them.
 log "📦 Updating repository..."
 cd "${APP_DIR}"
 git fetch origin main
 git reset --hard origin/main
+# Restore execute bit on scripts (git may reset file modes)
+chmod +x "${APP_DIR}/scripts/deploy-ec2.sh"
+chmod +x "${APP_DIR}/scripts/rollback-ec2.sh"
 
-# ── 3. Write deployment env file ─────────────────────────────────────────────
+# ── 3. Write deployment env file (image versions only) ────────────────────────
+# This file contains ONLY image references — no secrets.
 log "📝 Writing .env.deploy..."
 cat > "${DEPLOY_ENV}" << EOF
 BACKEND_IMAGE=${BACKEND_IMAGE}
@@ -46,79 +55,130 @@ PREVIOUS_TAG=${PREVIOUS_TAG}
 DEPLOY_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 EOF
 
-# ── 4. Login to ECR ──────────────────────────────────────────────────────────
+# ── 4. Login to ECR ───────────────────────────────────────────────────────────
 log "🔐 Logging in to ECR..."
 ECR_REGISTRY=$(echo "${BACKEND_IMAGE}" | cut -d/ -f1)
 aws ecr get-login-password --region "${AWS_REGION}" | \
     docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 
-# ── 5. Pull new images ────────────────────────────────────────────────────────
+# ── 5. Pull new images ─────────────────────────────────────────────────────────
 log "⬇️  Pulling new images from ECR..."
-docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" --env-file "${DEPLOY_ENV}" pull backend frontend
+docker compose -f "${COMPOSE_FILE}" \
+    --env-file "${ENV_FILE}" \
+    --env-file "${DEPLOY_ENV}" \
+    pull backend frontend
 
-# ── 6. Run database migrations ───────────────────────────────────────────────
+# ── 6. Run database migrations ────────────────────────────────────────────────
+# CRITICAL: DATABASE_URL must point to the Docker service "postgres:5432",
+# NOT to "localhost:5433" (which is the dev value in apps/server/.env).
+# We construct the URL from individual DB_* vars so we can safely override
+# DB_HOST and DB_PORT regardless of what the .env file contains.
 log "🗃️  Running database migrations..."
+
+# Extract credentials from the env file
+DB_NAME=$(grep '^DB_NAME=' "${ENV_FILE}" | cut -d= -f2)
+DB_USER=$(grep '^DB_USER=' "${ENV_FILE}" | cut -d= -f2)
+DB_PASSWORD=$(grep '^DB_PASSWORD=' "${ENV_FILE}" | cut -d= -f2)
+
+# Build a migration-specific DATABASE_URL that always targets the Docker postgres service
+MIGRATION_DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}"
+
 docker run --rm \
     --network workforce_access_network \
     --env-file "${ENV_FILE}" \
     -e DB_HOST=postgres \
     -e DB_PORT=5432 \
+    -e DATABASE_URL="${MIGRATION_DATABASE_URL}" \
     "${BACKEND_IMAGE}:${IMAGE_TAG}" \
-    sh -c "cd /app && node_modules/.bin/node-pg-migrate up --migrations-dir apps/server/db/migrations --database-url-env DATABASE_URL"
+    sh -c "cd /app && node_modules/.bin/node-pg-migrate up \
+        --migrations-dir apps/server/db/migrations \
+        --database-url-env DATABASE_URL"
 
-# ── 7. Recreate containers ────────────────────────────────────────────────────
+# ── 7. Recreate containers ─────────────────────────────────────────────────────
 log "🔄 Restarting application containers..."
-docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" --env-file "${DEPLOY_ENV}" up -d --remove-orphans
+docker compose -f "${COMPOSE_FILE}" \
+    --env-file "${ENV_FILE}" \
+    --env-file "${DEPLOY_ENV}" \
+    up -d --remove-orphans
 
-# ── 8. Wait for containers to be healthy ─────────────────────────────────────
-log "⏳ Waiting for containers to stabilise..."
-sleep 10
+# ── 8. Wait for containers to stabilise ───────────────────────────────────────
+log "⏳ Waiting for containers to stabilise (15s)..."
+sleep 15
 
-# ── 9. Verify container status ───────────────────────────────────────────────
+# ── 9. Verify container and service health ────────────────────────────────────
 log "🔍 Checking container status..."
-docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" --env-file "${DEPLOY_ENV}" ps
+docker compose -f "${COMPOSE_FILE}" \
+    --env-file "${ENV_FILE}" \
+    --env-file "${DEPLOY_ENV}" \
+    ps
 
-# Check postgres is healthy
+# PostgreSQL health (uses Docker healthcheck)
 PG_STATUS=$(docker inspect --format='{{.State.Health.Status}}' workforce_access_postgres 2>/dev/null || echo "unknown")
 if [ "${PG_STATUS}" != "healthy" ]; then
     log "❌ PostgreSQL is not healthy (status: ${PG_STATUS})"
     exit 1
 fi
+log "   ✓ PostgreSQL: ${PG_STATUS}"
 
-# Check backend is running
+# Backend container state
 BE_STATUS=$(docker inspect --format='{{.State.Status}}' workforce_access_backend 2>/dev/null || echo "unknown")
 if [ "${BE_STATUS}" != "running" ]; then
     log "❌ Backend container is not running (status: ${BE_STATUS})"
     docker logs --tail=50 workforce_access_backend 2>&1 || true
     exit 1
 fi
+log "   ✓ Backend container: ${BE_STATUS}"
 
-# Check frontend is running
+# Backend application health — probe the /health endpoint inside the container
+# (does not depend on Nginx or public routing)
+log "🩺 Probing backend /health endpoint inside container..."
+for attempt in 1 2 3 4 5; do
+    if docker exec workforce_access_backend \
+        node -e "
+          fetch('http://localhost:4000/health')
+            .then(r => { if (!r.ok) process.exit(1); console.log('backend ok'); })
+            .catch(() => process.exit(1));
+        " 2>/dev/null; then
+        log "   ✓ Backend /health: OK (attempt ${attempt})"
+        break
+    fi
+    if [ "${attempt}" -eq 5 ]; then
+        log "❌ Backend /health probe failed after 5 attempts"
+        docker logs --tail=30 workforce_access_backend 2>&1 || true
+        exit 1
+    fi
+    log "   Backend /health attempt ${attempt} failed, retrying in 5s..."
+    sleep 5
+done
+
+# Frontend/Nginx container state
 FE_STATUS=$(docker inspect --format='{{.State.Status}}' workforce_access_frontend 2>/dev/null || echo "unknown")
 if [ "${FE_STATUS}" != "running" ]; then
     log "❌ Frontend container is not running (status: ${FE_STATUS})"
     docker logs --tail=50 workforce_access_frontend 2>&1 || true
     exit 1
 fi
+log "   ✓ Frontend container: ${FE_STATUS}"
 
-# ── 10. HTTP health check ─────────────────────────────────────────────────────
-log "🌐 Running HTTP health check..."
+# ── 10. Public HTTPS health check ─────────────────────────────────────────────
+log "🌐 Running public HTTPS health check (${PUBLIC_URL})..."
 for attempt in 1 2 3 4 5; do
-    if curl -fsS --max-time 15 "${HEALTH_URL}" -o /dev/null; then
-        log "✅ Health check passed (attempt ${attempt})"
+    # -L follows redirects; -f fails on 4xx/5xx; --max-time caps the wait
+    if curl -fsS -L --max-time 20 "${PUBLIC_URL}" -o /dev/null; then
+        log "✅ Public health check passed (attempt ${attempt})"
         break
     fi
     if [ "${attempt}" -eq 5 ]; then
-        log "❌ Health check failed after 5 attempts"
+        log "❌ Public health check failed after 5 attempts"
         exit 1
     fi
-    log "   Health check attempt ${attempt} failed, retrying in 10s..."
+    log "   Attempt ${attempt} failed, retrying in 10s..."
     sleep 10
 done
 
-# ── 11. Clean up old images (keep last 3) ────────────────────────────────────
+# ── 11. Clean up dangling image layers ────────────────────────────────────────
 log "🧹 Cleaning up dangling images..."
 docker image prune -f || true
 
 log "✅ Deployment of ${IMAGE_TAG} complete!"
-log "   Application is live at: ${HEALTH_URL}"
+log "   Application live at: ${PUBLIC_URL}"

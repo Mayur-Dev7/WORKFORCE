@@ -35,6 +35,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Test — server
+        run: npm run test:server -- --run
+        env:
+          NODE_ENV: test
+
       - name: Test — web
         run: npm run test:web -- --run
 
