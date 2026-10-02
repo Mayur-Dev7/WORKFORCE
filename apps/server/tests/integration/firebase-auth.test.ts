@@ -54,6 +54,7 @@ describe('Firebase Auth Integration & Unit Tests', () => {
         verifyIdToken: vi.fn().mockResolvedValue({
           uid: 'firebase-test-uid-101',
           email: testUserRow.email,
+          email_verified: true,
         }),
       } as any;
       setMockFirebaseAuth(mockAuth);
@@ -81,6 +82,7 @@ describe('Firebase Auth Integration & Unit Tests', () => {
         verifyIdToken: vi.fn().mockResolvedValue({
           uid: 'unknown-unlinked-uid-999',
           email: 'unknown@example.com',
+          email_verified: true,
         }),
       } as any;
       setMockFirebaseAuth(mockAuth);
@@ -101,6 +103,7 @@ describe('Firebase Auth Integration & Unit Tests', () => {
         verifyIdToken: vi.fn().mockResolvedValue({
           uid: 'firebase-test-uid-101',
           email: testUserRow.email,
+          email_verified: true,
         }),
       } as any;
       setMockFirebaseAuth(mockAuth);
