@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   Layout,
@@ -44,10 +44,17 @@ const { Text } = Typography;
 export const AppLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [adminExpanded, setAdminExpanded] = useState(() => location.pathname.startsWith('/admin'));
   const { user, logout, hasPermission } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { token } = theme.useToken();
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/admin')) {
+      setAdminExpanded(true);
+    }
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     await logout();
@@ -110,12 +117,6 @@ export const AppLayout: React.FC = () => {
     path: string;
   }
 
-  interface NavGroup {
-    key: string;
-    label: string;
-    items: NavItem[];
-  }
-
   const isItemActive = (itemPath: string, currentPath: string) => {
     if (currentPath === itemPath) return true;
     if (
@@ -128,54 +129,45 @@ export const AppLayout: React.FC = () => {
     return currentPath.startsWith(itemPath + '/');
   };
 
-  const navGroups: NavGroup[] = [
+  const selfServiceItems: NavItem[] = [
     {
-      key: 'group-self-service',
-      label: 'SELF SERVICE',
-      items: [
-        {
-          key: '/employee/dashboard',
-          icon: <DashboardOutlined />,
-          label: 'Dashboard',
-          path: '/employee/dashboard',
-        },
-        {
-          key: '/employee/attendance',
-          icon: <HistoryOutlined />,
-          label: 'Attendance',
-          path: '/employee/attendance',
-        },
-        {
-          key: '/employee/leave',
-          icon: <CalendarOutlined />,
-          label: 'Leave',
-          path: '/employee/leave',
-        },
-      ],
+      key: '/employee/dashboard',
+      icon: <DashboardOutlined />,
+      label: 'Dashboard',
+      path: '/employee/dashboard',
     },
     {
-      key: 'group-biometric',
-      label: 'BIOMETRIC',
-      items: [
-        {
-          key: '/employee/attendance/check-in',
-          icon: <CheckCircleOutlined />,
-          label: 'Face Check-In',
-          path: '/employee/attendance/check-in',
-        },
-        {
-          key: '/employee/attendance/check-out',
-          icon: <CloseCircleOutlined />,
-          label: 'Face Check-Out',
-          path: '/employee/attendance/check-out',
-        },
-        {
-          key: '/employee/face-enrollment',
-          icon: <IdcardOutlined />,
-          label: 'Face Registration',
-          path: '/employee/face-enrollment',
-        },
-      ],
+      key: '/employee/attendance',
+      icon: <HistoryOutlined />,
+      label: 'Attendance',
+      path: '/employee/attendance',
+    },
+    {
+      key: '/employee/leave',
+      icon: <CalendarOutlined />,
+      label: 'Leave',
+      path: '/employee/leave',
+    },
+  ];
+
+  const biometricItems: NavItem[] = [
+    {
+      key: '/employee/attendance/check-in',
+      icon: <CheckCircleOutlined />,
+      label: 'Face Check-In',
+      path: '/employee/attendance/check-in',
+    },
+    {
+      key: '/employee/attendance/check-out',
+      icon: <CloseCircleOutlined />,
+      label: 'Face Check-Out',
+      path: '/employee/attendance/check-out',
+    },
+    {
+      key: '/employee/face-enrollment',
+      icon: <IdcardOutlined />,
+      label: 'Face Registration',
+      path: '/employee/face-enrollment',
     },
   ];
 
@@ -201,13 +193,43 @@ export const AppLayout: React.FC = () => {
   if (hasPermission(PermissionKey.LEAVE_READ_TEAM))
     adminItems.push({ key: '/admin/leave', icon: <CalendarOutlined />, label: 'Leave Management', path: '/admin/leave' });
 
-  if (adminItems.length > 0) {
-    navGroups.push({
-      key: 'group-admin',
-      label: 'ADMINISTRATION',
-      items: adminItems,
-    });
-  }
+  const renderItem = (item: NavItem, isCollapsed: boolean, onNav?: () => void) => {
+    const active = isItemActive(item.path, location.pathname);
+    const buttonNode = (
+      <button
+        key={item.key}
+        type="button"
+        className={`apple-sidebar-item ${isCollapsed ? 'collapsed' : ''} ${active ? 'active' : ''}`}
+        onClick={() => {
+          handleNavigation(item.path);
+          if (onNav) onNav();
+        }}
+        aria-label={item.label}
+        aria-current={active ? 'page' : undefined}
+      >
+        <span className="apple-sidebar-item-icon">{item.icon}</span>
+        {!isCollapsed && (
+          <span className="apple-sidebar-item-label">{item.label}</span>
+        )}
+      </button>
+    );
+
+    if (isCollapsed) {
+      return (
+        <Tooltip
+          key={item.key}
+          title={item.label}
+          placement="right"
+          mouseEnterDelay={0.1}
+          overlayClassName="apple-sidebar-tooltip"
+        >
+          {buttonNode}
+        </Tooltip>
+      );
+    }
+
+    return buttonNode;
+  };
 
   const renderSidebarHeader = (isCollapsed: boolean) => (
     <div className={`apple-sidebar-header ${isCollapsed ? 'collapsed' : ''}`}>
@@ -225,67 +247,71 @@ export const AppLayout: React.FC = () => {
 
   const renderNavContent = (isCollapsed: boolean, onNav?: () => void) => (
     <nav className="apple-sidebar-nav" aria-label="Sidebar Navigation">
-      {navGroups.map((group, groupIdx) => (
-        <div key={group.key} className="apple-sidebar-group">
-          {isCollapsed ? (
-            groupIdx > 0 ? <div className="apple-sidebar-group-divider" /> : null
-          ) : (
-            <div className="apple-sidebar-group-title">{group.label}</div>
-          )}
-          <div className="apple-sidebar-group-items">
-            {group.items.map((item) => {
-              const active = isItemActive(item.path, location.pathname);
-              const buttonNode = (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={`apple-sidebar-item ${isCollapsed ? 'collapsed' : ''} ${active ? 'active' : ''}`}
-                  onClick={() => {
-                    handleNavigation(item.path);
-                    if (onNav) onNav();
-                  }}
-                  aria-label={item.label}
-                  aria-current={active ? 'page' : undefined}
-                >
-                  <span className="apple-sidebar-item-icon">{item.icon}</span>
-                  {!isCollapsed && (
-                    <span className="apple-sidebar-item-label">{item.label}</span>
-                  )}
-                </button>
-              );
-
-              if (isCollapsed) {
-                return (
-                  <Tooltip
-                    key={item.key}
-                    title={item.label}
-                    placement="right"
-                    mouseEnterDelay={0.15}
-                  >
-                    {buttonNode}
-                  </Tooltip>
-                );
-              }
-
-              return buttonNode;
-            })}
-          </div>
+      {/* SELF SERVICE */}
+      <div className="apple-sidebar-group">
+        {!isCollapsed && <div className="apple-sidebar-group-title">Self Service</div>}
+        <div className="apple-sidebar-group-items">
+          {selfServiceItems.map((item) => renderItem(item, isCollapsed, onNav))}
         </div>
-      ))}
+      </div>
+
+      {isCollapsed && <div className="apple-sidebar-rail-space" />}
+
+      {/* BIOMETRIC */}
+      <div className="apple-sidebar-group">
+        {!isCollapsed && <div className="apple-sidebar-group-title">Biometric</div>}
+        <div className="apple-sidebar-group-items">
+          {biometricItems.map((item) => renderItem(item, isCollapsed, onNav))}
+        </div>
+      </div>
+
+      {/* ADMINISTRATION (COLLAPSIBLE SECONDARY WORKSPACE) */}
+      {adminItems.length > 0 && (
+        <>
+          {isCollapsed ? (
+            <>
+              <div className="apple-sidebar-rail-space" />
+              <div className="apple-sidebar-group">
+                <div className="apple-sidebar-group-items">
+                  {adminItems.map((item) => renderItem(item, isCollapsed, onNav))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="apple-sidebar-group">
+              <button
+                type="button"
+                className="apple-sidebar-section-toggle"
+                onClick={() => setAdminExpanded((prev) => !prev)}
+                aria-expanded={adminExpanded}
+              >
+                <span>Administration</span>
+                <span className="apple-sidebar-section-badge">{adminItems.length}</span>
+                <RightOutlined className={`apple-sidebar-chevron ${adminExpanded ? 'open' : 'closed'}`} />
+              </button>
+              {adminExpanded && (
+                <div className="apple-sidebar-group-items">
+                  {adminItems.map((item) => renderItem(item, isCollapsed, onNav))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </nav>
   );
 
   const renderSidebarFooter = (isCollapsed: boolean) => (
     <div className={`apple-sidebar-footer ${isCollapsed ? 'collapsed' : ''}`}>
       {isCollapsed ? (
-        <Tooltip title="Expand Sidebar" placement="right" mouseEnterDelay={0.15}>
+        <Tooltip title="Expand Sidebar" placement="right" mouseEnterDelay={0.1} overlayClassName="apple-sidebar-tooltip">
           <button
             type="button"
             className="apple-sidebar-collapse-btn collapsed"
             onClick={() => setCollapsed(false)}
             aria-label="Expand Sidebar"
           >
-            <RightOutlined style={{ fontSize: 13 }} />
+            <RightOutlined style={{ fontSize: 11 }} />
           </button>
         </Tooltip>
       ) : (
@@ -295,8 +321,8 @@ export const AppLayout: React.FC = () => {
           onClick={() => setCollapsed(true)}
           aria-label="Collapse Sidebar"
         >
-          <LeftOutlined style={{ fontSize: 13 }} />
-          <span>Collapse</span>
+          <LeftOutlined style={{ fontSize: 11 }} />
+          <span>Collapse Sidebar</span>
         </button>
       )}
     </div>
@@ -309,10 +335,10 @@ export const AppLayout: React.FC = () => {
         collapsible
         collapsed={collapsed}
         onCollapse={setCollapsed}
-        collapsedWidth={68}
+        collapsedWidth={64}
         trigger={null}
         theme="light"
-        width={248}
+        width={240}
         className="app-sider-desktop apple-sider"
       >
         {renderSidebarHeader(collapsed)}
@@ -325,11 +351,11 @@ export const AppLayout: React.FC = () => {
         placement="left"
         open={mobileDrawerOpen}
         onClose={() => setMobileDrawerOpen(false)}
-        width={260}
+        width={250}
         styles={{
           body: {
             padding: 0,
-            background: 'var(--sidebar-bg)',
+            background: 'var(--sidebar-surface)',
             display: 'flex',
             flexDirection: 'column',
             height: '100%',
