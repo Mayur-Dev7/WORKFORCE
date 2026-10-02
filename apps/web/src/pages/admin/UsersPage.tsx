@@ -32,7 +32,7 @@ import { useIsMobile } from '../../hooks/useMediaQuery.js';
 import { useAuth } from '../../context/AuthContext.js';
 import { useLocationWarmup, broadcastOfficeUpdate } from '../../context/LocationContext.js';
 
-const { Title, Text } = Typography;
+const { Title, Text, Paragraph } = Typography;
 
 /** Mobile Card for displaying an employee cleanly on small viewports */
 const EmployeeCard: React.FC<{
@@ -226,20 +226,51 @@ export const UsersPage: React.FC = () => {
     setCreating(true);
     try {
       const defaultCompanyId = offices[0]?.company_id;
-      await api.post('/users', {
+      const res = await api.post<ApiResponse<User>>('/users', {
         ...values,
         company_id: defaultCompanyId,
       });
+      const createdUser = res.data.data;
       message.success('Employee created successfully');
       setCreateModalVisible(false);
       createForm.resetFields();
       fetchUsers();
+
+      if (createdUser?.password_reset_link) {
+        Modal.success({
+          title: 'Employee Account Created',
+          width: 520,
+          content: (
+            <div style={{ marginTop: 12 }}>
+              <Paragraph>
+                An initial password setup link has been generated for <strong>{createdUser.name}</strong> ({createdUser.email}):
+              </Paragraph>
+              <Input.TextArea
+                value={createdUser.password_reset_link}
+                readOnly
+                autoSize={{ minRows: 2, maxRows: 4 }}
+                style={{ fontFamily: 'monospace', fontSize: 12, marginBottom: 12 }}
+              />
+              <Button
+                type="primary"
+                onClick={() => {
+                  navigator.clipboard.writeText(createdUser.password_reset_link || '');
+                  message.success('Password setup link copied to clipboard!');
+                }}
+              >
+                Copy Setup Link
+              </Button>
+            </div>
+          ),
+        });
+      }
     } catch (err: any) {
       message.error(err.response?.data?.error?.message || 'Failed to create employee');
     } finally {
       setCreating(false);
     }
   };
+
 
   const handleEdit = (user: User) => {
     setEditingUser(user);

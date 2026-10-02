@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   Card,
   Form,
@@ -124,17 +124,24 @@ export const LoginPage: React.FC = () => {
             />
           </Form.Item>
 
-          <Form.Item
-            name="password"
-            label="Password"
-            rules={[{ required: true, message: 'Please input your password!' }]}
-          >
-            <Input.Password
-              prefix={<LockOutlined style={{ color: 'rgba(0,0,0,.25)' }} />}
-              placeholder="••••••••••••"
-              size="large"
-            />
-          </Form.Item>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={{ fontSize: 14 }}>Password</Text>
+              <Link to="/forgot-password" style={{ fontSize: 13, color: '#1677ff' }}>
+                Forgot password?
+              </Link>
+            </div>
+            <Form.Item
+              name="password"
+              rules={[{ required: true, message: 'Please input your password!' }]}
+            >
+              <Input.Password
+                prefix={<LockOutlined style={{ color: 'rgba(0,0,0,.25)' }} />}
+                placeholder="••••••••••••"
+                size="large"
+              />
+            </Form.Item>
+          </div>
 
           <Form.Item style={{ marginTop: 24 }}>
             <Button type="primary" htmlType="submit" size="large" block loading={loading}>
@@ -143,59 +150,66 @@ export const LoginPage: React.FC = () => {
           </Form.Item>
         </Form>
 
-        <Divider style={{ margin: '16px 0' }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            DEVELOPMENT DEMO ACCOUNTS (Password: Password123!)
-          </Text>
-        </Divider>
+        {import.meta.env.DEV && (
+          <>
+            <Divider style={{ margin: '16px 0' }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                DEVELOPMENT DEMO ACCOUNTS (Password: Password123!)
+              </Text>
+            </Divider>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Button
-            size="small"
-            onClick={() => handleQuickFill('EMP-001')}
-            style={{ textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-          >
-            <span>Sarah Connor (Super Admin)</span>
-            <Tag color="magenta">SUPER_ADMIN</Tag>
-          </Button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Button
+                size="small"
+                onClick={() => handleQuickFill('EMP-001')}
+                style={{ textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
+              >
+                <span>Sarah Connor (Super Admin)</span>
+                <Tag color="magenta">SUPER_ADMIN</Tag>
+              </Button>
 
-          <Button
-            size="small"
-            onClick={() => handleQuickFill('EMP-002')}
-            style={{ textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-          >
-            <span>Elena Ramos (HR Admin)</span>
-            <Tag color="blue">HR_ADMIN</Tag>
-          </Button>
+              <Button
+                size="small"
+                onClick={() => handleQuickFill('EMP-002')}
+                style={{ textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
+              >
+                <span>Elena Ramos (HR Admin)</span>
+                <Tag color="blue">HR_ADMIN</Tag>
+              </Button>
 
-          <Button
-            size="small"
-            onClick={() => handleQuickFill('EMP-003')}
-            style={{ textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-          >
-            <span>Marcus Vance (Manager)</span>
-            <Tag color="orange">MANAGER</Tag>
-          </Button>
+              <Button
+                size="small"
+                onClick={() => handleQuickFill('EMP-003')}
+                style={{ textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
+              >
+                <span>Marcus Vance (Manager)</span>
+                <Tag color="orange">MANAGER</Tag>
+              </Button>
 
-          <Button
-            size="small"
-            onClick={() => handleQuickFill('EMP-101')}
-            style={{ textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-          >
-            <span>Alex Mercer (Face Enrolled Employee)</span>
-            <Tag color="green">FACE READY</Tag>
-          </Button>
+              <Button
+                size="small"
+                onClick={() => handleQuickFill('EMP-101')}
+                style={{ textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
+              >
+                <span>Alex Mercer (Face Enrolled Employee)</span>
+                <Tag color="green">FACE READY</Tag>
+              </Button>
 
-          <Button
-            size="small"
-            onClick={() => handleQuickFill('EMP-102')}
-            style={{ textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-          >
-            <span>Jessica Chen (New Employee)</span>
-            <Tag color="default">NO FACE YET</Tag>
-          </Button>
-        </div>
+              <Button
+                size="small"
+                onClick={() => handleQuickFill('EMP-102')}
+                style={{ textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
+              >
+                <span>Jessica Chen (New Employee)</span>
+                <Tag color="default">NO FACE YET</Tag>
+              </Button>
+            </div>
+          </>
+        )}
       </Card>
     </div>
   );
 };
+
+
+

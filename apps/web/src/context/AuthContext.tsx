@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User, PermissionKey, ApiResponse } from '@workforce/shared';
 import { api, setAccessToken, getAccessToken } from '../services/api.js';
+import { firebaseLogin } from '../features/firebase-auth/firebaseAuthAdapter.js';
 
 interface AuthContextType {
   user: User | null;
@@ -64,19 +65,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     password: string,
     coords?: { lat: number; lon: number }
   ): Promise<User> => {
-    const res = await api.post<ApiResponse<{ accessToken: string; user: User }>>('/auth/login', {
-      identifier,
-      password,
-      latitude: coords?.lat,
-      longitude: coords?.lon,
-    });
+    const authProvider = (import.meta.env.VITE_AUTH_PROVIDER || 'legacy').toLowerCase().trim();
 
-    const { accessToken, user: loggedInUser } = res.data.data;
+    let accessToken: string;
+    let loggedInUser: User;
+
+    if (authProvider !== 'legacy') {
+      const result = await firebaseLogin(identifier, password, coords);
+      accessToken = result.accessToken;
+      loggedInUser = result.user;
+    } else {
+
+      const res = await api.post<ApiResponse<{ accessToken: string; user: User }>>('/auth/login', {
+        identifier,
+        password,
+        latitude: coords?.lat,
+        longitude: coords?.lon,
+      });
+      accessToken = res.data.data.accessToken;
+      loggedInUser = res.data.data.user;
+    }
+
     setAccessToken(accessToken);
     setUser(loggedInUser);
     localStorage.setItem('user_info', JSON.stringify(loggedInUser));
     return loggedInUser;
   };
+
 
   const logout = async () => {
     try {

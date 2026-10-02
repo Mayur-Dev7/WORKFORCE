@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { AppLayout } from '../layouts/AppLayout.js';
 import { ProtectedRoute } from '../components/common/ProtectedRoute.js';
 import { LoginPage } from '../pages/auth/LoginPage.js';
+import { ForgotPasswordPage } from '../features/firebase-auth/ForgotPasswordPage.js';
 import { EmployeeDashboard } from '../pages/employee/EmployeeDashboard.js';
 import { CheckInPage } from '../pages/employee/CheckInPage.js';
 import { CheckOutPage } from '../pages/employee/CheckOutPage.js';
@@ -32,6 +33,11 @@ export const AppRoutes: React.FC = () => {
         path="/login"
         element={isAuthenticated ? <Navigate to="/employee/dashboard" replace /> : <LoginPage />}
       />
+      <Route
+        path="/forgot-password"
+        element={<ForgotPasswordPage />}
+      />
+
 
       <Route
         path="/"
