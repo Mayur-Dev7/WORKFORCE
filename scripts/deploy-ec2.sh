@@ -16,6 +16,7 @@ PUBLIC_URL="https://workforce.duckdns.org"
 
 log() { echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $*"; }
 
+main() {
 # ── 0. Validate required env vars ────────────────────────────────────────────
 : "${BACKEND_IMAGE:?BACKEND_IMAGE must be set by the SSM caller}"
 : "${FRONTEND_IMAGE:?FRONTEND_IMAGE must be set by the SSM caller}"
@@ -35,8 +36,11 @@ if [ -f "${DEPLOY_ENV}" ]; then
 fi
 
 # ── 2. Update repository to exact commit ──────────────────────────────────────
-# Check out the EXACT commit that was built and verified in CI, eliminating
-# any race conditions from subsequent pushes to main.
+# Configure non-interactive SSH with the ubuntu user deploy key and ssh config so git never
+# hangs waiting for input, regardless of whether SSM runs as root or ubuntu.
+export GIT_SSH_COMMAND="ssh -F /home/ubuntu/.ssh/config -i /home/ubuntu/.ssh/github_workforce_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
+git config --global --add safe.directory "${APP_DIR}" 2>/dev/null || true
+
 log "📦 Checking out exact commit: ${COMMIT_SHA}..."
 cd "${APP_DIR}"
 git fetch origin main
@@ -51,19 +55,24 @@ chmod +x "${APP_DIR}/scripts/rollback-ec2.sh"
 BACKEND_DATABASE_URL=$(node -e '
   const fs = require("fs");
   const envPath = process.argv[1];
-  let user = "workforce_admin", pass = "", name = "workforce_access_db";
-  if (fs.existsSync(envPath)) {
-    const content = fs.readFileSync(envPath, "utf8");
-    const get = (k) => {
-      const m = content.match(new RegExp(`^${k}=(.*)$`, "m"));
-      return m ? m[1].trim() : null;
-    };
-    user = get("DB_USER") || get("POSTGRES_USER") || user;
-    pass = get("DB_PASSWORD") || get("POSTGRES_PASSWORD") || pass;
-    name = get("DB_NAME") || get("POSTGRES_DB") || name;
+  if (!fs.existsSync(envPath)) {
+    console.error(`FATAL: Environment file not found: ${envPath}`);
+    process.exit(1);
+  }
+  const content = fs.readFileSync(envPath, "utf8");
+  const get = (k) => {
+    const m = content.match(new RegExp(`^${k}=(.*)$`, "m"));
+    return m ? m[1].trim() : null;
+  };
+  const user = get("DB_USER") || get("POSTGRES_USER") || "workforce_admin";
+  const pass = get("DB_PASSWORD") || get("POSTGRES_PASSWORD");
+  const name = get("DB_NAME") || get("POSTGRES_DB") || "workforce_access_db";
+  if (!pass) {
+    console.error(`FATAL: Neither DB_PASSWORD nor POSTGRES_PASSWORD defined in ${envPath}`);
+    process.exit(1);
   }
   process.stdout.write(`postgresql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@postgres:5432/${name}`);
-' "${ENV_FILE}" 2>/dev/null || echo "postgresql://workforce_admin@postgres:5432/workforce_access_db")
+' "${ENV_FILE}")
 
 log "📝 Writing .env.deploy with restricted 0600 permissions..."
 (
@@ -222,3 +231,6 @@ docker image prune -f || true
 
 log "✅ Deployment of ${IMAGE_TAG} (${COMMIT_SHA}) complete!"
 log "   Application live at: ${PUBLIC_URL}"
+}
+
+main "$@"
