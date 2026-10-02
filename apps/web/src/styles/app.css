@@ -2688,11 +2688,11 @@ html, body {
   margin-top: 8px;
 }
 
-.apple-mobile-session-card {
+.apple-mobile-day-sessions .apple-mobile-session-card {
   padding: 6px 0;
 }
 
-.apple-mobile-session-card:not(:last-child) {
+.apple-mobile-day-sessions .apple-mobile-session-card:not(:last-child) {
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   margin-bottom: 8px;
 }

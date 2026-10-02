@@ -1,11 +1,14 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Table, Spin, message } from 'antd';
+import { Table, Spin, message, Card, Typography, Tag, Flex, Empty } from 'antd';
+import { CalendarOutlined, ClockCircleOutlined, ArrowRightOutlined } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext.js';
 import { useLocationWarmup } from '../../context/LocationContext.js';
 import { api } from '../../services/api.js';
 import { AttendanceSession, Office, ApiResponse, WorkShift } from '@workforce/shared';
 import dayjs from 'dayjs';
+
+const { Text } = Typography;
 
 export const EmployeeDashboard: React.FC = () => {
   const { user, refreshUser } = useAuth();
@@ -537,35 +540,78 @@ export const EmployeeDashboard: React.FC = () => {
           />
         </div>
 
-        {/* Mobile View: Clean iOS/macOS Grouped Cards */}
+        {/* Mobile View: Ant Design Mobile-Friendly Cards */}
         <div className="apple-mobile-attendance-list">
           {history.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', color: '#86868b', fontSize: 14 }}>
-              No recent attendance sessions logged
-            </div>
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="No recent attendance sessions logged"
+              style={{ margin: '16px 0' }}
+            />
           ) : (
             history.map((session) => {
               const durationFormatted = formatDuration(session.check_in_at, session.check_out_at);
+              const isCompleted = !!session.check_out_at;
               return (
-                <div key={session.id} className="apple-mobile-session-card">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: '#1d1d1f' }}>
-                      {dayjs(session.check_in_at).format('MMM DD, YYYY')}
-                    </span>
-                    <span style={{ fontSize: 12.5 }}>
+                <Card
+                  key={session.id}
+                  size="small"
+                  bordered
+                  style={{
+                    borderRadius: 14,
+                    borderColor: '#e8e8ed',
+                    backgroundColor: '#ffffff',
+                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+                  }}
+                  styles={{
+                    body: {
+                      padding: '12px 14px',
+                    },
+                  }}
+                >
+                  <Flex justify="space-between" align="center" style={{ marginBottom: 6 }}>
+                    <Flex align="center" gap={6}>
+                      <CalendarOutlined style={{ color: '#0071e3', fontSize: 13 }} />
+                      <Text strong style={{ fontSize: 14, color: '#1d1d1f' }}>
+                        {dayjs(session.check_in_at).format('MMM DD, YYYY')}
+                      </Text>
+                    </Flex>
+                    <Tag
+                      color={isCompleted ? 'default' : 'processing'}
+                      bordered={false}
+                      style={{
+                        margin: 0,
+                        borderRadius: 12,
+                        fontWeight: 600,
+                        fontSize: 12,
+                        padding: '1px 8px',
+                        backgroundColor: isCompleted ? '#f2f2f7' : undefined,
+                        color: isCompleted ? '#1d1d1f' : undefined,
+                      }}
+                    >
                       {durationFormatted}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#6e6e73' }}>
-                    <span>{dayjs(session.check_in_at).format('hh:mm A')}</span>
-                    <span style={{ color: '#86868b' }}>→</span>
-                    <span>
-                      {session.check_out_at
+                    </Tag>
+                  </Flex>
+
+                  <Flex align="center" gap={8} style={{ fontSize: 13, color: '#6e6e73' }}>
+                    <ClockCircleOutlined style={{ fontSize: 12, color: '#8e8e93' }} />
+                    <Text style={{ fontSize: 13, color: '#3a3a3c' }}>
+                      {dayjs(session.check_in_at).format('hh:mm A')}
+                    </Text>
+                    <ArrowRightOutlined style={{ fontSize: 10, color: '#8e8e93' }} />
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        color: isCompleted ? '#3a3a3c' : '#0071e3',
+                        fontWeight: isCompleted ? 400 : 600,
+                      }}
+                    >
+                      {isCompleted
                         ? dayjs(session.check_out_at).format('hh:mm A')
                         : 'In Session'}
-                    </span>
-                  </div>
-                </div>
+                    </Text>
+                  </Flex>
+                </Card>
               );
             })
           )}
