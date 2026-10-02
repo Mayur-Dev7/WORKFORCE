@@ -128,7 +128,54 @@ describe('Firebase Auth Integration & Unit Tests', () => {
       expect(res.body.success).toBe(false);
       expect(res.body.error.code).toBe(ErrorCode.UNAUTHORIZED);
     });
+
+    it('automatically links unlinked provisioned employee when signing in with verified Google email', async () => {
+      // Set test user's firebase_uid to NULL to simulate an unlinked provisioned employee
+      await pool.query(`UPDATE users SET firebase_uid = NULL, auth_provider = 'legacy' WHERE id = $1`, [testUserRow.id]);
+
+      const mockAuth = {
+        verifyIdToken: vi.fn().mockResolvedValue({
+          uid: 'google-oauth-uid-999',
+          email: testUserRow.email,
+          email_verified: true,
+        }),
+      } as any;
+      setMockFirebaseAuth(mockAuth);
+
+      const res = await request(app)
+        .post('/api/v1/auth/firebase/session')
+        .send({ idToken: 'google-id-token-verified' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.user.id).toBe(testUserRow.id);
+
+      // Verify the user's firebase_uid is now permanently linked
+      const updated = await usersRepository.findById(testUserRow.id);
+      expect(updated?.firebase_uid).toBe('google-oauth-uid-999');
+      expect(updated?.auth_provider).toBe('firebase');
+    });
+
+    it('rejects arbitrary unprovisioned Google email even if email_verified is true', async () => {
+      const mockAuth = {
+        verifyIdToken: vi.fn().mockResolvedValue({
+          uid: 'arbitrary-google-user-777',
+          email: 'stranger@gmail.com',
+          email_verified: true,
+        }),
+      } as any;
+      setMockFirebaseAuth(mockAuth);
+
+      const res = await request(app)
+        .post('/api/v1/auth/firebase/session')
+        .send({ idToken: 'stranger-google-token' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe(ErrorCode.ACCOUNT_NOT_PROVISIONED);
+    });
   });
+
 
   describe('POST /api/v1/auth/firebase/resolve-identifier', () => {
     it('returns corporate email when given valid employee code', async () => {

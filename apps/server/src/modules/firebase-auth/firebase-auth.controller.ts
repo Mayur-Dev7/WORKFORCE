@@ -35,8 +35,23 @@ export class FirebaseAuthController {
         return;
       }
 
-      // Look up user STRICTLY by firebase_uid. Never match by email at runtime.
-      const userRow = await usersRepository.findByFirebaseUid(decodedToken.uid);
+      // Look up user primarily by firebase_uid
+      let userRow = await usersRepository.findByFirebaseUid(decodedToken.uid);
+
+      // If not found by firebase_uid, but email is verified by Google/Firebase:
+      // Allow linking to an existing admin-provisioned employee whose firebase_uid is not yet set.
+      // NEVER auto-create users. Arbitrary unprovisioned accounts remain strictly rejected.
+      if (!userRow && decodedToken.email_verified && decodedToken.email) {
+        const candidate = await usersRepository.findByCodeOrEmail(decodedToken.email.toLowerCase().trim());
+        if (candidate && !candidate.firebase_uid) {
+          await usersRepository.update(candidate.id, {
+            firebase_uid: decodedToken.uid,
+            auth_provider: 'firebase',
+            firebase_linked_at: new Date(),
+          });
+          userRow = await usersRepository.findById(candidate.id);
+        }
+      }
 
       if (!userRow) {
         await loginAttemptsRepository.create({

@@ -32,7 +32,9 @@ export class FirebaseIdentityProvisioner implements IdentityProvisioner {
       email: emailLower,
       displayName: user.name,
       password: tempPassword,
+      emailVerified: true,
     });
+
 
     try {
       // 2. Link user in database (under transaction if dbClient provided)

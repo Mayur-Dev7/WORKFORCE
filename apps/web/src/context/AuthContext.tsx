@@ -1,18 +1,21 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User, PermissionKey, ApiResponse } from '@workforce/shared';
 import { api, setAccessToken, getAccessToken } from '../services/api.js';
-import { firebaseLogin } from '../features/firebase-auth/firebaseAuthAdapter.js';
+import { firebaseLogin, firebaseGoogleLogin } from '../features/firebase-auth/firebaseAuthAdapter.js';
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   loading: boolean;
   login: (identifier: string, password: string, coords?: { lat: number; lon: number }) => Promise<User>;
+  loginWithGoogle?: (onLinkPasswordRequired?: (email: string) => Promise<string>) => Promise<User>;
+
   logout: () => Promise<void>;
   hasPermission: (permission: PermissionKey) => boolean;
   hasAnyPermission: (permissions: PermissionKey[]) => boolean;
   refreshUser: () => Promise<User | null>;
 }
+
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -92,6 +95,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return loggedInUser;
   };
 
+  const loginWithGoogle = async (
+    onLinkPasswordRequired?: (email: string) => Promise<string>
+  ): Promise<User> => {
+    const authProvider = (import.meta.env.VITE_AUTH_PROVIDER || 'legacy').toLowerCase().trim();
+    if (authProvider === 'legacy') {
+      throw new Error('Google sign-in is not supported in legacy authentication mode');
+    }
+
+    const result = await firebaseGoogleLogin(onLinkPasswordRequired);
+    setAccessToken(result.accessToken);
+    setUser(result.user);
+    localStorage.setItem('user_info', JSON.stringify(result.user));
+    return result.user;
+  };
 
   const logout = async () => {
     try {
@@ -122,12 +139,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: !!user,
         loading,
         login,
+        loginWithGoogle,
         logout,
         hasPermission,
         hasAnyPermission,
         refreshUser,
       }}
     >
+
       {children}
     </AuthContext.Provider>
   );

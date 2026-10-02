@@ -181,7 +181,9 @@ async function run() {
         displayName: u.name,
         passwordHash: Buffer.from(u.password_hash),
         disabled: !u.is_active,
+        emailVerified: true,
       }));
+
 
       console.log(`Importing batch ${Math.floor(i / batchSize) + 1} (${userRecords.length} users)...`);
 
