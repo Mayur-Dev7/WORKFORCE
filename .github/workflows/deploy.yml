@@ -85,6 +85,7 @@ jobs:
     name: Build & Push Docker Images
     runs-on: ubuntu-24.04
     needs: test
+    environment: Production
 
     outputs:
       image-tag:        ${{ steps.tag.outputs.tag }}
