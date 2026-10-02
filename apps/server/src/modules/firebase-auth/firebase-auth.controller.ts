@@ -39,11 +39,11 @@ export class FirebaseAuthController {
       let userRow = await usersRepository.findByFirebaseUid(decodedToken.uid);
 
       // If not found by firebase_uid, but email is verified by Google/Firebase:
-      // Allow linking to an existing admin-provisioned employee whose firebase_uid is not yet set.
+      // Allow linking to an existing admin-provisioned employee whose email matches.
       // NEVER auto-create users. Arbitrary unprovisioned accounts remain strictly rejected.
       if (!userRow && decodedToken.email_verified && decodedToken.email) {
         const candidate = await usersRepository.findByCodeOrEmail(decodedToken.email.toLowerCase().trim());
-        if (candidate && !candidate.firebase_uid) {
+        if (candidate) {
           await usersRepository.update(candidate.id, {
             firebase_uid: decodedToken.uid,
             auth_provider: 'firebase',
@@ -61,11 +61,12 @@ export class FirebaseAuthController {
           user_agent: req.headers['user-agent'],
         });
 
+        const candidateEmail = decodedToken.email ? ` for ${decodedToken.email}` : '';
         res.status(403).json({
           success: false,
           error: {
             code: ErrorCode.ACCOUNT_NOT_PROVISIONED,
-            message: 'Account not provisioned',
+            message: `Account not provisioned${candidateEmail}. Please contact your administrator to create your employee profile.`,
           },
         });
         return;
