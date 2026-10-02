@@ -136,11 +136,18 @@ jobs:
           context:    .
           file:       apps/web/Dockerfile
           push:       true
+          build-args: |
+            VITE_AUTH_PROVIDER=${{ vars.VITE_AUTH_PROVIDER || 'legacy' }}
+            VITE_FIREBASE_API_KEY=${{ vars.VITE_FIREBASE_API_KEY || 'AIzaSyCqNWpfBZlZuwsdhzLvd7dPcSCV3ZfG-fw' }}
+            VITE_FIREBASE_AUTH_DOMAIN=${{ vars.VITE_FIREBASE_AUTH_DOMAIN || 'workforce-b553b.firebaseapp.com' }}
+            VITE_FIREBASE_PROJECT_ID=${{ vars.VITE_FIREBASE_PROJECT_ID || 'workforce-b553b' }}
+            VITE_FIREBASE_APP_ID=${{ vars.VITE_FIREBASE_APP_ID || '1:844442367846:web:485e2e3f601733c4bdfaa7' }}
           tags: |
             ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:${{ steps.tag.outputs.tag }}
             ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:latest
           cache-from: type=gha
           cache-to:   type=gha,mode=max
+
 
   # ── Job 3: Deploy to EC2 via SSM ─────────────────────────────────────────
   deploy:

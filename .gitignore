@@ -12,3 +12,8 @@ coverage/
 .turbo/
 .vercel
 .env.deploy
+
+# Firebase Service Account & Secrets
+*firebase*.json
+*service-account*.json
+serviceAccountKey.json
