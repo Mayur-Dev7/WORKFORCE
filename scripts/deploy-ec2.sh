@@ -71,28 +71,35 @@ docker compose -f "${COMPOSE_FILE}" \
 # ── 6. Run database migrations ────────────────────────────────────────────────
 # CRITICAL: DATABASE_URL must point to the Docker service "postgres:5432",
 # NOT to "localhost:5433" (which is the dev value in apps/server/.env).
-# We construct the URL from individual DB_* vars so we can safely override
-# DB_HOST and DB_PORT regardless of what the .env file contains.
+# We use Node to safely URL-encode DB_USER and DB_PASSWORD (handling any special
+# characters such as @, #, :, /, %, etc.) and invoke the hoisted migration CLI.
 log "🗃️  Running database migrations..."
-
-# Extract credentials from the env file
-DB_NAME=$(grep '^DB_NAME=' "${ENV_FILE}" | cut -d= -f2)
-DB_USER=$(grep '^DB_USER=' "${ENV_FILE}" | cut -d= -f2)
-DB_PASSWORD=$(grep '^DB_PASSWORD=' "${ENV_FILE}" | cut -d= -f2)
-
-# Build a migration-specific DATABASE_URL that always targets the Docker postgres service
-MIGRATION_DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}"
 
 docker run --rm \
     --network workforce_access_network \
     --env-file "${ENV_FILE}" \
     -e DB_HOST=postgres \
     -e DB_PORT=5432 \
-    -e DATABASE_URL="${MIGRATION_DATABASE_URL}" \
     "${BACKEND_IMAGE}:${IMAGE_TAG}" \
-    sh -c "cd /app && node_modules/.bin/node-pg-migrate up \
-        --migrations-dir apps/server/db/migrations \
-        --database-url-env DATABASE_URL"
+    node -e '
+      const { execFileSync } = require("child_process");
+      const user = encodeURIComponent(process.env.DB_USER || "workforce_admin");
+      const pass = encodeURIComponent(process.env.DB_PASSWORD || "");
+      const host = process.env.DB_HOST || "postgres";
+      const port = process.env.DB_PORT || "5432";
+      const db = process.env.DB_NAME || "workforce_access_db";
+      const dbUrl = `postgresql://${user}:${pass}@${host}:${port}/${db}`;
+      console.log(`[migration] Target: postgresql://${user}:****@${host}:${port}/${db}`);
+      execFileSync("/app/node_modules/.bin/node-pg-migrate", [
+        "up",
+        "--migrations-dir", "apps/server/db/migrations",
+        "--database-url-env", "DATABASE_URL"
+      ], {
+        cwd: "/app",
+        env: { ...process.env, DATABASE_URL: dbUrl },
+        stdio: "inherit"
+      });
+    '
 
 # ── 7. Recreate containers ─────────────────────────────────────────────────────
 log "🔄 Restarting application containers..."

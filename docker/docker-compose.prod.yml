@@ -63,6 +63,8 @@ services:
     volumes:
       # Mount Let's Encrypt certificates read-only
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      # Mount certbot webroot challenge directory read-only
+      - /var/www/certbot:/var/www/certbot:ro
     depends_on:
       - backend
     networks:
