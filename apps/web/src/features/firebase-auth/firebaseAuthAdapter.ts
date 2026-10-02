@@ -21,12 +21,13 @@ export function mapFirebaseAuthError(err: any): string {
       return 'Too many attempts, try later';
     case 'auth/user-disabled':
       return 'Account has been deactivated. Contact HR or administrator.';
-    case 'auth/network-request-failed':
-      return 'Network connection failed. Please check your internet and try again.';
+    case 'auth/unauthorized-domain':
+      return 'This domain is not authorized in Firebase Console. Please add it to Firebase Console > Authentication > Settings > Authorized domains.';
     case 'auth/popup-closed-by-user':
     case 'auth/cancelled-popup-request':
       return 'Sign in was cancelled';
     default:
+
       return err?.response?.data?.error?.message || err?.message || 'Login failed';
   }
 }
