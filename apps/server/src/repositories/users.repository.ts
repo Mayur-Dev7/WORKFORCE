@@ -11,12 +11,15 @@ export interface UserRow {
   employee_code: string;
   name: string;
   email: string;
-  password_hash: string;
+  password_hash: string | null;
   is_active: boolean;
   face_enrolled: boolean;
   created_at: Date;
   updated_at: Date;
   last_login_at: Date | null;
+  firebase_uid?: string | null;
+  auth_provider?: 'legacy' | 'firebase';
+  firebase_linked_at?: Date | null;
   company_name?: string;
   office_name?: string;
   department_name?: string;
@@ -38,6 +41,9 @@ export class UsersRepository {
       u.password_hash,
       u.is_active,
       u.face_enrolled,
+      u.firebase_uid,
+      u.auth_provider,
+      u.firebase_linked_at,
       u.created_at,
       u.updated_at,
       u.last_login_at,
@@ -102,6 +108,17 @@ export class UsersRepository {
     return res.rows[0] || null;
   }
 
+  async findByFirebaseUid(firebaseUid: string, client?: PoolClient): Promise<UserRow | null> {
+    const queryClient = client || pool;
+    const query = `
+      ${this.baseSelect}
+      WHERE u.firebase_uid = $1
+      GROUP BY u.id, c.name, o.name, d.name, r.name
+    `;
+    const res = await queryClient.query<UserRow>(query, [firebaseUid]);
+    return res.rows[0] || null;
+  }
+
   async findAll(params?: {
     companyId?: string;
     officeId?: string;
@@ -161,7 +178,10 @@ export class UsersRepository {
       employee_code: string;
       name: string;
       email: string;
-      password_hash: string;
+      password_hash?: string | null;
+      firebase_uid?: string | null;
+      auth_provider?: 'legacy' | 'firebase';
+      firebase_linked_at?: Date | null;
     },
     client?: PoolClient
   ): Promise<UserRow> {
@@ -169,9 +189,10 @@ export class UsersRepository {
     const insertQuery = `
       INSERT INTO users (
         company_id, office_id, department_id, role_id,
-        employee_code, name, email, password_hash
+        employee_code, name, email, password_hash,
+        firebase_uid, auth_provider, firebase_linked_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING id
     `;
     const res = await queryClient.query<{ id: string }>(insertQuery, [
@@ -182,7 +203,10 @@ export class UsersRepository {
       user.employee_code,
       user.name,
       user.email,
-      user.password_hash,
+      user.password_hash || null,
+      user.firebase_uid || null,
+      user.auth_provider || 'legacy',
+      user.firebase_linked_at || null,
     ]);
 
     const created = await this.findById(res.rows[0].id, client);
@@ -202,7 +226,10 @@ export class UsersRepository {
       role_id?: string;
       is_active?: boolean;
       face_enrolled?: boolean;
-      password_hash?: string;
+      password_hash?: string | null;
+      firebase_uid?: string | null;
+      auth_provider?: 'legacy' | 'firebase';
+      firebase_linked_at?: Date | null;
     },
     client?: PoolClient
   ): Promise<UserRow | null> {
@@ -242,6 +269,18 @@ export class UsersRepository {
     if (updates.password_hash !== undefined) {
       sets.push(`password_hash = $${idx++}`);
       values.push(updates.password_hash);
+    }
+    if (updates.firebase_uid !== undefined) {
+      sets.push(`firebase_uid = $${idx++}`);
+      values.push(updates.firebase_uid);
+    }
+    if (updates.auth_provider !== undefined) {
+      sets.push(`auth_provider = $${idx++}`);
+      values.push(updates.auth_provider);
+    }
+    if (updates.firebase_linked_at !== undefined) {
+      sets.push(`firebase_linked_at = $${idx++}`);
+      values.push(updates.firebase_linked_at);
     }
 
     const query = `

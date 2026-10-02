@@ -35,7 +35,12 @@ export function errorHandler(
       break;
     case ErrorCode.PERMISSION_DENIED:
     case ErrorCode.ACCOUNT_DISABLED:
+    case ErrorCode.AUTH_METHOD_MISMATCH:
+    case ErrorCode.ACCOUNT_NOT_PROVISIONED:
       status = 403;
+      break;
+    case ErrorCode.AUTH_METHOD_DEPRECATED:
+      status = 410;
       break;
     case ErrorCode.USER_NOT_FOUND:
       status = 404;

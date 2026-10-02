@@ -5,6 +5,8 @@ import { faceTemplatesRepository } from '../repositories/faceTemplates.repositor
 import { auditLogsRepository } from '../repositories/auditLogs.repository.js';
 import { faceService } from './face.service.js';
 import { User, RoleName, PermissionKey, AuditAction, ErrorCode } from '@workforce/shared';
+import { getIdentityProvisioner } from '../modules/firebase-auth/identity-provisioner.js';
+import { getAuthProviderMode } from '../modules/firebase-auth/types.js';
 
 function mapRowToUser(row: UserRow): User {
   return {
@@ -26,6 +28,9 @@ function mapRowToUser(row: UserRow): User {
     department_name: row.department_name,
     role_name: row.role_name as RoleName,
     permissions: (row.permissions || []) as PermissionKey[],
+    firebase_uid: row.firebase_uid,
+    auth_provider: row.auth_provider,
+    firebase_linked_at: row.firebase_linked_at ? row.firebase_linked_at.toISOString() : null,
   };
 }
 
@@ -67,7 +72,13 @@ export class UsersService {
       throw err;
     }
 
-    const passwordHash = await bcrypt.hash(data.password || 'Password123!', 10);
+    const mode = getAuthProviderMode();
+    let passwordHash: string | undefined;
+    if (mode === 'legacy') {
+      passwordHash = await bcrypt.hash(data.password || 'Password123!', 10);
+    } else if (data.password) {
+      passwordHash = await bcrypt.hash(data.password, 10);
+    }
 
     return withTransaction(async (client) => {
       const createdRow = await usersRepository.create(
@@ -80,6 +91,17 @@ export class UsersService {
           name: data.name,
           email: data.email,
           password_hash: passwordHash,
+        },
+        client
+      );
+
+      const provisioner = getIdentityProvisioner();
+      const provisionResult = await provisioner.onUserCreated(
+        {
+          id: createdRow.id,
+          email: createdRow.email,
+          name: createdRow.name,
+          employee_code: createdRow.employee_code,
         },
         client
       );
@@ -99,7 +121,12 @@ export class UsersService {
         client
       );
 
-      return mapRowToUser(createdRow);
+      const refreshedRow = await usersRepository.findById(createdRow.id, client);
+      const user = mapRowToUser(refreshedRow || createdRow);
+      if (provisionResult?.passwordResetLink) {
+        user.password_reset_link = provisionResult.passwordResetLink;
+      }
+      return user;
     });
   }
 
@@ -126,6 +153,20 @@ export class UsersService {
     let passwordHash: string | undefined;
     if (data.password) {
       passwordHash = await bcrypt.hash(data.password, 10);
+    }
+
+    // Call identity provisioner hooks before DB update
+    const provisioner = getIdentityProvisioner();
+    if (data.is_active !== undefined && data.is_active !== existing.is_active) {
+      if (data.is_active === false) {
+        await provisioner.onUserDisabled(id, existing.firebase_uid);
+      } else {
+        await provisioner.onUserEnabled(id, existing.firebase_uid);
+      }
+    }
+
+    if (data.email && data.email.trim().toLowerCase() !== existing.email.toLowerCase()) {
+      await provisioner.onEmailChanged(id, data.email, existing.firebase_uid);
     }
 
     return withTransaction(async (client) => {
@@ -161,6 +202,14 @@ export class UsersService {
       return mapRowToUser(updatedRow);
     });
   }
+
+  async deleteUser(id: string): Promise<void> {
+    const existing = await usersRepository.findById(id);
+    if (!existing) return;
+    const provisioner = getIdentityProvisioner();
+    await provisioner.onUserDeleted(id, existing.firebase_uid);
+  }
+
 
   async enrollFace(
     actorUserId: string,

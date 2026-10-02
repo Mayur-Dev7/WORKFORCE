@@ -4,6 +4,8 @@ import { usersRepository } from '../repositories/users.repository.js';
 import { loginAttemptsRepository } from '../repositories/loginAttempts.repository.js';
 import { auditLogsRepository } from '../repositories/auditLogs.repository.js';
 import { RoleName, PermissionKey, LoginEventType, ErrorCode, User } from '@workforce/shared';
+import { getAuthProviderMode } from '../modules/firebase-auth/types.js';
+import { UserRow } from '../repositories/users.repository.js';
 
 export interface TokenPayload {
   userId: string;
@@ -52,74 +54,19 @@ export class AuthService {
     return jwt.verify(token, this.refreshSecret) as { userId: string };
   }
 
-  async login(
-    identifier: string, // email or employee code
-    passwordPlain: string,
-    meta?: {
+  /**
+   * Centralized token and session issuer used by both legacy login and Firebase session exchange.
+   * Ensures identical JWT payload, refresh cookie, and User object formatting.
+   */
+  async issueSession(
+    userRow: UserRow,
+    _meta?: {
       ipAddress?: string;
       userAgent?: string;
       latitude?: number;
       longitude?: number;
     }
   ): Promise<LoginResult> {
-    const userRow = await usersRepository.findByCodeOrEmail(identifier);
-
-    if (!userRow) {
-      await loginAttemptsRepository.create({
-        event_type: LoginEventType.UNKNOWN_EMPLOYEE,
-        failure_reason: `Unknown employee identifier: ${identifier}`,
-        ip_address: meta?.ipAddress,
-        user_agent: meta?.userAgent,
-        latitude: meta?.latitude,
-        longitude: meta?.longitude,
-      });
-
-      const err = new Error('Invalid employee code/email or password');
-      (err as any).code = ErrorCode.INVALID_CREDENTIALS;
-      throw err;
-    }
-
-    if (!userRow.is_active) {
-      await loginAttemptsRepository.create({
-        user_id: userRow.id,
-        event_type: LoginEventType.DISABLED_ACCOUNT,
-        failure_reason: 'Account is disabled',
-        ip_address: meta?.ipAddress,
-        user_agent: meta?.userAgent,
-      });
-
-      const err = new Error('Account has been deactivated. Contact HR or administrator.');
-      (err as any).code = ErrorCode.ACCOUNT_DISABLED;
-      throw err;
-    }
-
-    const passwordMatches = await bcrypt.compare(passwordPlain, userRow.password_hash);
-    if (!passwordMatches) {
-      await loginAttemptsRepository.create({
-        user_id: userRow.id,
-        event_type: LoginEventType.FAILED_PASSWORD,
-        failure_reason: 'Password mismatch',
-        ip_address: meta?.ipAddress,
-        user_agent: meta?.userAgent,
-        latitude: meta?.latitude,
-        longitude: meta?.longitude,
-      });
-
-      const err = new Error('Invalid employee code/email or password');
-      (err as any).code = ErrorCode.INVALID_CREDENTIALS;
-      throw err;
-    }
-
-    // Success
-    await loginAttemptsRepository.create({
-      user_id: userRow.id,
-      event_type: LoginEventType.SUCCESS,
-      ip_address: meta?.ipAddress,
-      user_agent: meta?.userAgent,
-      latitude: meta?.latitude,
-      longitude: meta?.longitude,
-    });
-
     await usersRepository.updateLastLogin(userRow.id);
 
     const tokenPayload: TokenPayload = {
@@ -151,6 +98,9 @@ export class AuthService {
       department_name: userRow.department_name,
       role_name: userRow.role_name as RoleName,
       permissions: (userRow.permissions || []) as PermissionKey[],
+      firebase_uid: userRow.firebase_uid,
+      auth_provider: userRow.auth_provider,
+      firebase_linked_at: userRow.firebase_linked_at ? userRow.firebase_linked_at.toISOString() : null,
     };
 
     return {
@@ -158,6 +108,106 @@ export class AuthService {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
     };
+  }
+
+  async login(
+    identifier: string, // email or employee code
+    passwordPlain: string,
+    meta?: {
+      ipAddress?: string;
+      userAgent?: string;
+      latitude?: number;
+      longitude?: number;
+    }
+  ): Promise<LoginResult> {
+    const mode = getAuthProviderMode();
+    if (mode === 'firebase') {
+      const err = new Error('Legacy password login has been retired. Please sign in with Firebase.');
+      (err as any).code = ErrorCode.AUTH_METHOD_DEPRECATED;
+      (err as any).statusCode = 410;
+      throw err;
+    }
+
+    const userRow = await usersRepository.findByCodeOrEmail(identifier);
+
+    if (!userRow) {
+      await loginAttemptsRepository.create({
+        event_type: LoginEventType.UNKNOWN_EMPLOYEE,
+        failure_reason: `Unknown employee identifier: ${identifier}`,
+        ip_address: meta?.ipAddress,
+        user_agent: meta?.userAgent,
+        latitude: meta?.latitude,
+        longitude: meta?.longitude,
+      });
+
+      const err = new Error('Invalid employee code/email or password');
+      (err as any).code = ErrorCode.INVALID_CREDENTIALS;
+      throw err;
+    }
+
+    if (userRow.auth_provider === 'firebase') {
+      const err = new Error('This account is managed by Firebase Auth. Please use Firebase login.');
+      (err as any).code = ErrorCode.AUTH_METHOD_MISMATCH;
+      (err as any).statusCode = 403;
+      throw err;
+    }
+
+    if (!userRow.is_active) {
+      await loginAttemptsRepository.create({
+        user_id: userRow.id,
+        event_type: LoginEventType.DISABLED_ACCOUNT,
+        failure_reason: 'Account is disabled',
+        ip_address: meta?.ipAddress,
+        user_agent: meta?.userAgent,
+      });
+
+      const err = new Error('Account has been deactivated. Contact HR or administrator.');
+      (err as any).code = ErrorCode.ACCOUNT_DISABLED;
+      throw err;
+    }
+
+    if (!userRow.password_hash) {
+      await loginAttemptsRepository.create({
+        user_id: userRow.id,
+        event_type: LoginEventType.FAILED_PASSWORD,
+        failure_reason: 'No password hash configured',
+        ip_address: meta?.ipAddress,
+        user_agent: meta?.userAgent,
+      });
+
+      const err = new Error('Invalid employee code/email or password');
+      (err as any).code = ErrorCode.INVALID_CREDENTIALS;
+      throw err;
+    }
+
+    const passwordMatches = await bcrypt.compare(passwordPlain, userRow.password_hash);
+    if (!passwordMatches) {
+      await loginAttemptsRepository.create({
+        user_id: userRow.id,
+        event_type: LoginEventType.FAILED_PASSWORD,
+        failure_reason: 'Password mismatch',
+        ip_address: meta?.ipAddress,
+        user_agent: meta?.userAgent,
+        latitude: meta?.latitude,
+        longitude: meta?.longitude,
+      });
+
+      const err = new Error('Invalid employee code/email or password');
+      (err as any).code = ErrorCode.INVALID_CREDENTIALS;
+      throw err;
+    }
+
+    // Success
+    await loginAttemptsRepository.create({
+      user_id: userRow.id,
+      event_type: LoginEventType.SUCCESS,
+      ip_address: meta?.ipAddress,
+      user_agent: meta?.userAgent,
+      latitude: meta?.latitude,
+      longitude: meta?.longitude,
+    });
+
+    return this.issueSession(userRow, meta);
   }
 
   async refresh(refreshToken: string): Promise<{ accessToken: string; user: User }> {

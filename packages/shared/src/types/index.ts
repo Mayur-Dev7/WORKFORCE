@@ -21,6 +21,10 @@ export interface User {
   department_name?: string;
   role_name?: RoleName;
   permissions?: PermissionKey[];
+  firebase_uid?: string | null;
+  auth_provider?: 'legacy' | 'firebase';
+  firebase_linked_at?: string | null;
+  password_reset_link?: string | null;
 }
 
 export interface Company {
