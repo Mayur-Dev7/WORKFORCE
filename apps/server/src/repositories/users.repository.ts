@@ -119,6 +119,35 @@ export class UsersRepository {
     return res.rows[0] || null;
   }
 
+  async findUnlinkedByEmail(email: string, client?: PoolClient): Promise<UserRow[]> {
+    const queryClient = client || pool;
+    const query = `
+      ${this.baseSelect}
+      WHERE LOWER(TRIM(u.email)) = LOWER(TRIM($1)) AND u.firebase_uid IS NULL
+      GROUP BY u.id, c.name, o.name, d.name, r.name
+    `;
+    const res = await queryClient.query<UserRow>(query, [email]);
+    return res.rows;
+  }
+
+  async linkFirebaseUid(
+    userId: string,
+    firebaseUid: string,
+    client?: PoolClient
+  ): Promise<number> {
+    const queryClient = client || pool;
+    const res = await queryClient.query(
+      `UPDATE users
+       SET firebase_uid = $1,
+           auth_provider = 'firebase',
+           firebase_linked_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $2 AND firebase_uid IS NULL`,
+      [firebaseUid, userId]
+    );
+    return res.rowCount || 0;
+  }
+
   async findAll(params?: {
     companyId?: string;
     officeId?: string;
