@@ -10,6 +10,7 @@ import {
   Tag,
   Button,
   Drawer,
+  Tooltip,
   theme,
 } from 'antd';
 import type { MenuProps } from 'antd';
@@ -30,6 +31,8 @@ import {
   CalendarOutlined,
   MenuOutlined,
   ClockCircleOutlined,
+  LeftOutlined,
+  RightOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.js';
 import { PermissionKey } from '@workforce/shared';
@@ -96,144 +99,205 @@ export const AppLayout: React.FC = () => {
     if (pathname.startsWith('/admin/reports')) return 'Reports';
     if (pathname.startsWith('/admin/audit-logs')) return 'Audit Trail';
     if (pathname.startsWith('/admin/shifts')) return 'Work Shifts & Breaks';
+    if (pathname.startsWith('/admin/leave')) return 'Leave Management';
     return 'Dashboard';
   };
 
-  const buildMenuItems = (): MenuProps['items'] => {
-    const items: MenuProps['items'] = [
-      {
-        key: 'group-self-service',
-        type: 'group',
-        label: 'SELF SERVICE',
-        children: [
-          {
-            key: '/employee/dashboard',
-            icon: <DashboardOutlined />,
-            label: 'Dashboard',
-            onClick: () => handleNavigation('/employee/dashboard'),
-          },
-          {
-            key: '/employee/attendance',
-            icon: <HistoryOutlined />,
-            label: 'Attendance',
-            onClick: () => handleNavigation('/employee/attendance'),
-          },
-          {
-            key: '/employee/leave',
-            icon: <CalendarOutlined />,
-            label: 'Leave',
-            onClick: () => handleNavigation('/employee/leave'),
-          },
-        ],
-      },
-      {
-        key: 'group-biometric',
-        type: 'group',
-        label: 'BIOMETRIC',
-        children: [
-          {
-            key: '/employee/attendance/check-in',
-            icon: <CheckCircleOutlined />,
-            label: 'Face Check-In',
-            onClick: () => handleNavigation('/employee/attendance/check-in'),
-          },
-          {
-            key: '/employee/attendance/check-out',
-            icon: <CloseCircleOutlined />,
-            label: 'Face Check-Out',
-            onClick: () => handleNavigation('/employee/attendance/check-out'),
-          },
-          {
-            key: '/employee/face-enrollment',
-            icon: <IdcardOutlined />,
-            label: 'Face Registration',
-            onClick: () => handleNavigation('/employee/face-enrollment'),
-          },
-        ],
-      },
-    ];
+  interface NavItem {
+    key: string;
+    label: string;
+    icon: React.ReactNode;
+    path: string;
+  }
 
-    const canViewAdmin =
-      hasPermission(PermissionKey.USER_READ) ||
-      hasPermission(PermissionKey.OFFICE_READ) ||
-      hasPermission(PermissionKey.REPORTS_READ) ||
-      hasPermission(PermissionKey.LEAVE_READ_TEAM) ||
-      hasPermission(PermissionKey.HOLIDAY_READ) ||
-      hasPermission(PermissionKey.SHIFT_READ);
+  interface NavGroup {
+    key: string;
+    label: string;
+    items: NavItem[];
+  }
 
-    if (canViewAdmin) {
-      const adminChildren: any[] = [];
-
-      if (hasPermission(PermissionKey.USER_READ))
-        adminChildren.push({ key: '/admin/users', icon: <TeamOutlined />, label: 'Employees', onClick: () => handleNavigation('/admin/users') });
-      if (hasPermission(PermissionKey.OFFICE_READ))
-        adminChildren.push({ key: '/admin/offices', icon: <EnvironmentOutlined />, label: 'Office Geofences', onClick: () => handleNavigation('/admin/offices') });
-      if (hasPermission(PermissionKey.SHIFT_READ))
-        adminChildren.push({ key: '/admin/shifts', icon: <ClockCircleOutlined />, label: 'Work Shifts & Breaks', onClick: () => handleNavigation('/admin/shifts') });
-      if (hasPermission(PermissionKey.HOLIDAY_READ))
-        adminChildren.push({ key: '/admin/holidays', icon: <CalendarOutlined />, label: 'Holidays', onClick: () => handleNavigation('/admin/holidays') });
-      if (hasPermission(PermissionKey.REPORTS_READ))
-        adminChildren.push({ key: '/admin/dashboard', icon: <DashboardOutlined />, label: 'Admin Overview', onClick: () => handleNavigation('/admin/dashboard') });
-      if (hasPermission(PermissionKey.DEPARTMENT_READ))
-        adminChildren.push({ key: '/admin/departments', icon: <AppstoreOutlined />, label: 'Departments', onClick: () => handleNavigation('/admin/departments') });
-      if (hasPermission(PermissionKey.ROLE_READ))
-        adminChildren.push({ key: '/admin/roles', icon: <SafetyCertificateOutlined />, label: 'Roles & RBAC', onClick: () => handleNavigation('/admin/roles') });
-      if (hasPermission(PermissionKey.REPORTS_READ))
-        adminChildren.push({ key: '/admin/reports', icon: <BarChartOutlined />, label: 'Reports', onClick: () => handleNavigation('/admin/reports') });
-      if (hasPermission(PermissionKey.AUDIT_READ))
-        adminChildren.push({ key: '/admin/audit-logs', icon: <FileProtectOutlined />, label: 'Audit Trail', onClick: () => handleNavigation('/admin/audit-logs') });
-      if (hasPermission(PermissionKey.LEAVE_READ_TEAM))
-        adminChildren.push({ key: '/admin/leave', icon: <CalendarOutlined />, label: 'Leave Management', onClick: () => handleNavigation('/admin/leave') });
-
-      if (adminChildren.length > 0) {
-        items.push({ key: 'group-admin', type: 'group', label: 'ADMINISTRATION', children: adminChildren });
-      }
+  const isItemActive = (itemPath: string, currentPath: string) => {
+    if (currentPath === itemPath) return true;
+    if (
+      itemPath === '/employee/attendance' &&
+      (currentPath.startsWith('/employee/attendance/check-in') ||
+        currentPath.startsWith('/employee/attendance/check-out'))
+    ) {
+      return false;
     }
-    return items;
+    return currentPath.startsWith(itemPath + '/');
   };
 
-  const menuItems = buildMenuItems();
+  const navGroups: NavGroup[] = [
+    {
+      key: 'group-self-service',
+      label: 'SELF SERVICE',
+      items: [
+        {
+          key: '/employee/dashboard',
+          icon: <DashboardOutlined />,
+          label: 'Dashboard',
+          path: '/employee/dashboard',
+        },
+        {
+          key: '/employee/attendance',
+          icon: <HistoryOutlined />,
+          label: 'Attendance',
+          path: '/employee/attendance',
+        },
+        {
+          key: '/employee/leave',
+          icon: <CalendarOutlined />,
+          label: 'Leave',
+          path: '/employee/leave',
+        },
+      ],
+    },
+    {
+      key: 'group-biometric',
+      label: 'BIOMETRIC',
+      items: [
+        {
+          key: '/employee/attendance/check-in',
+          icon: <CheckCircleOutlined />,
+          label: 'Face Check-In',
+          path: '/employee/attendance/check-in',
+        },
+        {
+          key: '/employee/attendance/check-out',
+          icon: <CloseCircleOutlined />,
+          label: 'Face Check-Out',
+          path: '/employee/attendance/check-out',
+        },
+        {
+          key: '/employee/face-enrollment',
+          icon: <IdcardOutlined />,
+          label: 'Face Registration',
+          path: '/employee/face-enrollment',
+        },
+      ],
+    },
+  ];
 
-  const SidebarLogo = ({ showText }: { showText: boolean }) => (
-    <div
-      className="apple-sidebar-logo"
-      style={{
-        height: 52,
-        display: 'flex',
-        alignItems: 'center',
-        padding: showText ? '0 18px' : '0',
-        justifyContent: showText ? 'flex-start' : 'center',
-        gap: 10,
-        borderBottom: '1px solid var(--apple-border)',
-        flexShrink: 0,
-        transition: 'padding 0.15s ease, justify-content 0.15s ease',
-      }}
-    >
-      <div
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: 7,
-          background: 'var(--apple-accent)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#ffffff',
-          fontSize: 14,
-          flexShrink: 0,
-        }}
-      >
+  const adminItems: NavItem[] = [];
+  if (hasPermission(PermissionKey.USER_READ))
+    adminItems.push({ key: '/admin/users', icon: <TeamOutlined />, label: 'Employees', path: '/admin/users' });
+  if (hasPermission(PermissionKey.OFFICE_READ))
+    adminItems.push({ key: '/admin/offices', icon: <EnvironmentOutlined />, label: 'Office Geofences', path: '/admin/offices' });
+  if (hasPermission(PermissionKey.SHIFT_READ))
+    adminItems.push({ key: '/admin/shifts', icon: <ClockCircleOutlined />, label: 'Work Shifts & Breaks', path: '/admin/shifts' });
+  if (hasPermission(PermissionKey.HOLIDAY_READ))
+    adminItems.push({ key: '/admin/holidays', icon: <CalendarOutlined />, label: 'Holidays', path: '/admin/holidays' });
+  if (hasPermission(PermissionKey.REPORTS_READ))
+    adminItems.push({ key: '/admin/dashboard', icon: <DashboardOutlined />, label: 'Admin Overview', path: '/admin/dashboard' });
+  if (hasPermission(PermissionKey.DEPARTMENT_READ))
+    adminItems.push({ key: '/admin/departments', icon: <AppstoreOutlined />, label: 'Departments', path: '/admin/departments' });
+  if (hasPermission(PermissionKey.ROLE_READ))
+    adminItems.push({ key: '/admin/roles', icon: <SafetyCertificateOutlined />, label: 'Roles & RBAC', path: '/admin/roles' });
+  if (hasPermission(PermissionKey.REPORTS_READ))
+    adminItems.push({ key: '/admin/reports', icon: <BarChartOutlined />, label: 'Reports', path: '/admin/reports' });
+  if (hasPermission(PermissionKey.AUDIT_READ))
+    adminItems.push({ key: '/admin/audit-logs', icon: <FileProtectOutlined />, label: 'Audit Trail', path: '/admin/audit-logs' });
+  if (hasPermission(PermissionKey.LEAVE_READ_TEAM))
+    adminItems.push({ key: '/admin/leave', icon: <CalendarOutlined />, label: 'Leave Management', path: '/admin/leave' });
+
+  if (adminItems.length > 0) {
+    navGroups.push({
+      key: 'group-admin',
+      label: 'ADMINISTRATION',
+      items: adminItems,
+    });
+  }
+
+  const renderSidebarHeader = (isCollapsed: boolean) => (
+    <div className={`apple-sidebar-header ${isCollapsed ? 'collapsed' : ''}`}>
+      <div className="apple-sidebar-logo-icon">
         <IdcardOutlined />
       </div>
-      {showText && (
-        <div style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--apple-text-primary)', lineHeight: 1.2, letterSpacing: '-0.2px' }}>
-            Workforce Access
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--apple-text-secondary)', letterSpacing: '-0.1px' }}>
-            Enterprise Portal
+      {!isCollapsed && (
+        <div className="apple-sidebar-brand-text">
+          <span className="apple-sidebar-brand-title">Workforce Access</span>
+          <span className="apple-sidebar-brand-subtitle">Enterprise Portal</span>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderNavContent = (isCollapsed: boolean, onNav?: () => void) => (
+    <nav className="apple-sidebar-nav" aria-label="Sidebar Navigation">
+      {navGroups.map((group, groupIdx) => (
+        <div key={group.key} className="apple-sidebar-group">
+          {isCollapsed ? (
+            groupIdx > 0 ? <div className="apple-sidebar-group-divider" /> : null
+          ) : (
+            <div className="apple-sidebar-group-title">{group.label}</div>
+          )}
+          <div className="apple-sidebar-group-items">
+            {group.items.map((item) => {
+              const active = isItemActive(item.path, location.pathname);
+              const buttonNode = (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`apple-sidebar-item ${isCollapsed ? 'collapsed' : ''} ${active ? 'active' : ''}`}
+                  onClick={() => {
+                    handleNavigation(item.path);
+                    if (onNav) onNav();
+                  }}
+                  aria-label={item.label}
+                  aria-current={active ? 'page' : undefined}
+                >
+                  <span className="apple-sidebar-item-icon">{item.icon}</span>
+                  {!isCollapsed && (
+                    <span className="apple-sidebar-item-label">{item.label}</span>
+                  )}
+                </button>
+              );
+
+              if (isCollapsed) {
+                return (
+                  <Tooltip
+                    key={item.key}
+                    title={item.label}
+                    placement="right"
+                    mouseEnterDelay={0.15}
+                  >
+                    {buttonNode}
+                  </Tooltip>
+                );
+              }
+
+              return buttonNode;
+            })}
           </div>
         </div>
+      ))}
+    </nav>
+  );
+
+  const renderSidebarFooter = (isCollapsed: boolean) => (
+    <div className={`apple-sidebar-footer ${isCollapsed ? 'collapsed' : ''}`}>
+      {isCollapsed ? (
+        <Tooltip title="Expand Sidebar" placement="right" mouseEnterDelay={0.15}>
+          <button
+            type="button"
+            className="apple-sidebar-collapse-btn collapsed"
+            onClick={() => setCollapsed(false)}
+            aria-label="Expand Sidebar"
+          >
+            <RightOutlined style={{ fontSize: 13 }} />
+          </button>
+        </Tooltip>
+      ) : (
+        <button
+          type="button"
+          className="apple-sidebar-collapse-btn"
+          onClick={() => setCollapsed(true)}
+          aria-label="Collapse Sidebar"
+        >
+          <LeftOutlined style={{ fontSize: 13 }} />
+          <span>Collapse</span>
+        </button>
       )}
     </div>
   );
@@ -245,26 +309,15 @@ export const AppLayout: React.FC = () => {
         collapsible
         collapsed={collapsed}
         onCollapse={setCollapsed}
-        collapsedWidth={72}
+        collapsedWidth={68}
+        trigger={null}
         theme="light"
-        width={240}
+        width={248}
         className="app-sider-desktop apple-sider"
-        style={{
-          overflow: 'auto',
-          height: '100vh',
-          position: 'sticky',
-          top: 0,
-          left: 0,
-        }}
       >
-        <SidebarLogo showText={!collapsed} />
-        <Menu
-          mode="inline"
-          selectedKeys={[location.pathname]}
-          defaultOpenKeys={['group-self-service', 'group-biometric', 'group-admin']}
-          items={menuItems}
-          style={{ borderRight: 0 }}
-        />
+        {renderSidebarHeader(collapsed)}
+        {renderNavContent(collapsed)}
+        {renderSidebarFooter(collapsed)}
       </Sider>
 
       {/* Mobile Slide-in Drawer */}
@@ -273,17 +326,20 @@ export const AppLayout: React.FC = () => {
         open={mobileDrawerOpen}
         onClose={() => setMobileDrawerOpen(false)}
         width={260}
-        styles={{ body: { padding: 0 }, header: { display: 'none' } }}
+        styles={{
+          body: {
+            padding: 0,
+            background: 'var(--sidebar-bg)',
+            display: 'flex',
+            flexDirection: 'column',
+            height: '100%',
+          },
+          header: { display: 'none' },
+        }}
         className="app-sider-mobile-drawer"
       >
-        <SidebarLogo showText={true} />
-        <Menu
-          mode="inline"
-          selectedKeys={[location.pathname]}
-          defaultOpenKeys={['group-self-service', 'group-biometric', 'group-admin']}
-          items={menuItems}
-          style={{ borderRight: 0 }}
-        />
+        {renderSidebarHeader(false)}
+        {renderNavContent(false, () => setMobileDrawerOpen(false))}
       </Drawer>
 
       <Layout style={{ minWidth: 0, background: 'var(--apple-bg)' }}>
