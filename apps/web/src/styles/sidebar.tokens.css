@@ -1,0 +1,59 @@
+/*
+ * ─── Workforce Access – Sidebar Design Tokens ───────────────────────────────
+ * Single source of truth. Import this before Sidebar.module.css.
+ * All sidebar CSS variables live here so theming is one-file edit.
+ */
+
+:root {
+  /* ── Surfaces ───────────────────────────────────────────────────────────── */
+  --sb-surface:           rgba(246, 246, 248, 0.88);
+  --sb-surface-solid:     #f5f5f7;          /* no-backdrop-filter fallback    */
+  --sb-blur:              blur(24px) saturate(180%);
+  --sb-border:            rgba(0, 0, 0, 0.06);
+
+  /* ── Text ───────────────────────────────────────────────────────────────── */
+  --sb-text-primary:      #1d1d1f;          /* ≥ 14 px body copy              */
+  --sb-text-secondary:    #6e6e73;          /* metadata, subtitles            */
+  --sb-text-muted:        #8e8e93;          /* section labels                 */
+
+  /* ── Accent ─────────────────────────────────────────────────────────────── */
+  --sb-accent:            #007aff;          /* active icon, focus ring        */
+  --sb-accent-bg:         rgba(0, 122, 255, 0.10);   /* active row tint      */
+  --sb-accent-text:       #0057c2;          /* active label – 4.5:1 on white  */
+
+  /* ── Interaction surfaces ────────────────────────────────────────────────── */
+  --sb-hover-bg:          rgba(0, 0, 0, 0.04);
+  --sb-pressed-bg:        rgba(0, 0, 0, 0.07);
+  --sb-focus-ring:        rgba(0, 122, 255, 0.55);
+
+  /* ── Dimensions ─────────────────────────────────────────────────────────── */
+  --sb-width:             260px;
+  --sb-width-collapsed:   72px;
+  --sb-item-h:            36px;
+  --sb-item-r:            8px;
+  --sb-icon-sz:           17px;
+
+  /* ── Spacing (8-pt grid) ─────────────────────────────────────────────────── */
+  --sb-pad:               12px;
+  --sb-group-gap:         20px;             /* above each section header      */
+  --sb-icon-gap:          10px;             /* icon → label                   */
+  --sb-admin-indent:      12px;             /* extra indent for admin items   */
+
+  /* ── Typography ─────────────────────────────────────────────────────────── */
+  --sb-font:              -apple-system, BlinkMacSystemFont, "SF Pro Text",
+                          "SF Pro Display", Inter, "Segoe UI", sans-serif;
+  --sb-item-sz:           14px;
+  --sb-section-sz:        11px;
+
+  /* ── Animation ──────────────────────────────────────────────────────────── */
+  --sb-ease:              cubic-bezier(0.32, 0.72, 0, 1);
+  --sb-dur:               250ms;
+  --sb-dur-fast:          150ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --sb-dur:     0ms;
+    --sb-dur-fast: 0ms;
+  }
+}
