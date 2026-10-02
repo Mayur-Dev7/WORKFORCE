@@ -7,7 +7,7 @@
 #   1. Webroot directory on host: /var/www/certbot
 #   2. Mounted read-only into frontend Docker container at /var/www/certbot
 #   3. Nginx serves http://workforce.duckdns.org/.well-known/acme-challenge/ from /var/www/certbot
-#   4. Certbot renews using the webroot authenticator (never conflicts with Nginx port 80)
+#   4. Host-level Certbot renews using the webroot authenticator (never conflicts with Nginx port 80)
 #   5. Certbot deploy hook executes "docker exec workforce_access_frontend nginx -s reload"
 #      upon successful renewal to reload the new certificate with zero downtime.
 #
@@ -28,24 +28,27 @@ sudo mkdir -p "${WEBROOT}"
 sudo chmod 755 "${WEBROOT}"
 echo "   ✓ Webroot directory ready."
 
-# ── 2. Detect Certbot runner (host-level vs Docker) ───────────────────────────
-CERTBOT_CMD=""
+# ── 2. Verify host-level Certbot binary ───────────────────────────────────────
+# A host-level Certbot is strictly required because the renewal deploy hook
+# needs to run "docker exec workforce_access_frontend nginx -s reload" directly
+# on the host. Docker-in-Docker / containerized certbot is avoided for security.
 if command -v certbot >/dev/null 2>&1; then
-    CERTBOT_CMD="sudo certbot"
     echo "   ✓ Detected host-level Certbot: $(certbot --version 2>&1)"
 else
     echo "⚠️ Host-level Certbot binary not found in PATH."
     if command -v apt-get >/dev/null 2>&1; then
-        echo "→ Attempting to install host-level certbot package..."
+        echo "→ Attempting to install host-level certbot package via apt..."
         sudo apt-get update -qq && sudo apt-get install -y certbot -qq || true
     fi
 
     if command -v certbot >/dev/null 2>&1; then
-        CERTBOT_CMD="sudo certbot"
         echo "   ✓ Successfully installed host-level Certbot: $(certbot --version 2>&1)"
     else
-        echo "→ Falling back to Docker certbot/certbot container for renewal..."
-        CERTBOT_CMD="docker run --rm -v /etc/letsencrypt:/etc/letsencrypt -v ${WEBROOT}:${WEBROOT} certbot/certbot"
+        echo "❌ ERROR: Host-level certbot binary is required on Ubuntu."
+        echo "   The renewal deploy hook must run 'docker exec' on the host to reload Nginx."
+        echo "   Please install certbot on the host system (e.g. 'sudo apt-get install -y certbot' or via snap)"
+        echo "   and re-run this script."
+        exit 1
     fi
 fi
 
@@ -75,8 +78,8 @@ echo "   ✓ Deploy hook installed."
 # ── 4. Verify existing certificate configuration ─────────────────────────────
 RENEWAL_CONF="/etc/letsencrypt/renewal/${DOMAIN}.conf"
 if [ ! -f "${RENEWAL_CONF}" ]; then
-    echo "ERROR: ${RENEWAL_CONF} not found."
-    echo "The certificate must have been issued with certbot first."
+    echo "❌ ERROR: ${RENEWAL_CONF} not found."
+    echo "   The certificate must have been issued with certbot first."
     exit 1
 fi
 
@@ -89,12 +92,12 @@ if [ "${CURRENT_AUTH}" != "webroot" ]; then
     echo "→ Updating renewal config to use webroot authenticator permanently..."
     
     # Try certbot reconfigure (Certbot 2.6.0+)
-    if ${CERTBOT_CMD} reconfigure --help >/dev/null 2>&1; then
+    if sudo certbot reconfigure --help >/dev/null 2>&1; then
         echo "   Using: certbot reconfigure --cert-name ${DOMAIN} --webroot-path ${WEBROOT}"
-        ${CERTBOT_CMD} reconfigure --cert-name "${DOMAIN}" --webroot-path "${WEBROOT}"
+        sudo certbot reconfigure --cert-name "${DOMAIN}" --webroot-path "${WEBROOT}"
     else
         echo "   Using: certbot certonly --webroot --keep-until-expiring"
-        ${CERTBOT_CMD} certonly --webroot -w "${WEBROOT}" -d "${DOMAIN}" --cert-name "${DOMAIN}" --non-interactive --keep-until-expiring
+        sudo certbot certonly --webroot -w "${WEBROOT}" -d "${DOMAIN}" --cert-name "${DOMAIN}" --non-interactive --keep-until-expiring
     fi
     echo "   ✓ Renewal configuration permanently updated to webroot."
 else
@@ -106,27 +109,26 @@ if systemctl list-timers --all 2>/dev/null | grep -q 'certbot'; then
     echo "→ certbot systemd timer is active — automatic renewals are scheduled via systemd."
 else
     echo "→ Setting up cron schedule for twice-daily renewal checks..."
-    if command -v certbot >/dev/null 2>&1; then
-        CRON_CMD="certbot renew --quiet --no-self-upgrade"
-    else
-        CRON_CMD="docker run --rm -v /etc/letsencrypt:/etc/letsencrypt -v ${WEBROOT}:${WEBROOT} certbot/certbot renew --quiet && docker exec ${CONTAINER} nginx -s reload"
-    fi
-    CRON_LINE="0 3,15 * * * root ${CRON_CMD} 2>&1 | logger -t certbot-renew"
+    CRON_LINE="0 3,15 * * * root certbot renew --quiet --no-self-upgrade 2>&1 | logger -t certbot-renew"
     CRON_FILE="/etc/cron.d/certbot-workforce"
     echo "${CRON_LINE}" | sudo tee "${CRON_FILE}" > /dev/null
     sudo chmod 644 "${CRON_FILE}"
     echo "   ✓ Cron job installed at ${CRON_FILE}"
 fi
 
-# ── 7. Run dry-run verification ───────────────────────────────────────────────
+# ── 7. Run dry-run verification (FAILURE-FATAL) ────────────────────────────────
 echo ""
 echo "→ Running certbot renew --dry-run --run-deploy-hooks to test renewal & reload hook..."
-${CERTBOT_CMD} renew --dry-run --run-deploy-hooks --cert-name "${DOMAIN}" || {
+if ! sudo certbot renew --dry-run --run-deploy-hooks --cert-name "${DOMAIN}"; then
     echo ""
-    echo "⚠️ Dry-run reported an issue. Note:"
-    echo "   - Ensure frontend Docker container is running (docker compose -f docker/docker-compose.prod.yml up -d)"
-    echo "   - Ensure port 80 is forwarded to frontend container"
-}
+    echo "❌ ERROR: Certbot dry-run with deploy hook failed!"
+    echo "   Troubleshooting checks:"
+    echo "   1. Ensure production containers are running: docker compose -f docker/docker-compose.prod.yml up -d"
+    echo "   2. Ensure frontend container has /var/www/certbot mounted"
+    echo "   3. Ensure public port 80 routes to the frontend container"
+    echo "   4. Ensure DNS workforce.duckdns.org points to this server IP"
+    exit 1
+fi
 
 echo ""
 echo "=== Setup complete ==="

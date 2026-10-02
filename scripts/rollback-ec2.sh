@@ -42,14 +42,19 @@ ECR_REGISTRY=$(echo "${BACKEND_IMAGE}" | cut -d/ -f1)
 aws ecr get-login-password --region "${AWS_REGION}" | \
     docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 
-# Write rollback deploy env
-cat > "${DEPLOY_ENV}" << EOF
+# Write rollback deploy env with restricted permissions
+(
+  umask 077
+  cat > "${DEPLOY_ENV}" << EOF
 BACKEND_IMAGE=${BACKEND_IMAGE}
 FRONTEND_IMAGE=${FRONTEND_IMAGE}
 IMAGE_TAG=${ROLLBACK_TAG}
 PREVIOUS_TAG=${IMAGE_TAG}
+BACKEND_DATABASE_URL=${BACKEND_DATABASE_URL:-}
 DEPLOY_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 EOF
+)
+chmod 600 "${DEPLOY_ENV}"
 
 # Pull rollback images
 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" --env-file "${DEPLOY_ENV}" pull backend frontend

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # deploy-ec2.sh — runs on EC2 via AWS SSM
 # Invoked by GitHub Actions: deploy.yml Job 3
-# Required env vars (set by SSM caller): BACKEND_IMAGE  FRONTEND_IMAGE  IMAGE_TAG
+# Required env vars (set by SSM caller): BACKEND_IMAGE  FRONTEND_IMAGE  IMAGE_TAG  COMMIT_SHA
 
 set -euo pipefail
 
@@ -20,8 +20,10 @@ log() { echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $*"; }
 : "${BACKEND_IMAGE:?BACKEND_IMAGE must be set by the SSM caller}"
 : "${FRONTEND_IMAGE:?FRONTEND_IMAGE must be set by the SSM caller}"
 : "${IMAGE_TAG:?IMAGE_TAG must be set by the SSM caller}"
+: "${COMMIT_SHA:?COMMIT_SHA must be set by the SSM caller}"
 
 log "🚀 Starting deployment of tag: ${IMAGE_TAG}"
+log "   Commit:   ${COMMIT_SHA}"
 log "   Backend:  ${BACKEND_IMAGE}:${IMAGE_TAG}"
 log "   Frontend: ${FRONTEND_IMAGE}:${IMAGE_TAG}"
 
@@ -32,15 +34,14 @@ if [ -f "${DEPLOY_ENV}" ]; then
     log "   Previous tag: ${PREVIOUS_TAG:-<none>}"
 fi
 
-# ── 2. Update repository ──────────────────────────────────────────────────────
-# git reset --hard updates tracked files (Dockerfiles, compose, scripts etc.)
-# It does NOT touch untracked files, so apps/server/.env and .env.deploy are safe.
-# Both files are in .gitignore so git will never touch them.
-log "📦 Updating repository..."
+# ── 2. Update repository to exact commit ──────────────────────────────────────
+# Check out the EXACT commit that was built and verified in CI, eliminating
+# any race conditions from subsequent pushes to main.
+log "📦 Checking out exact commit: ${COMMIT_SHA}..."
 cd "${APP_DIR}"
 git fetch origin main
-git reset --hard origin/main
-# Restore execute bit on scripts (git may reset file modes)
+git checkout -f "${COMMIT_SHA}"
+# Restore execute bit on scripts
 chmod +x "${APP_DIR}/scripts/deploy-ec2.sh"
 chmod +x "${APP_DIR}/scripts/rollback-ec2.sh"
 
@@ -71,6 +72,7 @@ log "📝 Writing .env.deploy with restricted 0600 permissions..."
 BACKEND_IMAGE=${BACKEND_IMAGE}
 FRONTEND_IMAGE=${FRONTEND_IMAGE}
 IMAGE_TAG=${IMAGE_TAG}
+COMMIT_SHA=${COMMIT_SHA}
 PREVIOUS_TAG=${PREVIOUS_TAG}
 BACKEND_DATABASE_URL=${BACKEND_DATABASE_URL}
 DEPLOY_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
@@ -78,26 +80,44 @@ EOF
 )
 chmod 600 "${DEPLOY_ENV}"
 
-# ── 4. Login to ECR ───────────────────────────────────────────────────────────
+# ── 4. Start PostgreSQL first with Docker Compose ────────────────────────────
+# Docker Compose creates workforce_access_network automatically.
+# Crucial deployment order: PostgreSQL must be running and healthy BEFORE migrations!
+log "🐘 Starting PostgreSQL service via Docker Compose..."
+docker compose -f "${COMPOSE_FILE}" \
+    --env-file "${ENV_FILE}" \
+    --env-file "${DEPLOY_ENV}" \
+    up -d postgres
+
+log "⏳ Waiting for PostgreSQL to become healthy..."
+for i in $(seq 1 30); do
+    PG_STATUS=$(docker inspect --format='{{.State.Health.Status}}' workforce_access_postgres 2>/dev/null || echo "starting")
+    if [ "${PG_STATUS}" = "healthy" ]; then
+        log "   ✓ PostgreSQL is healthy (attempt ${i})"
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        log "❌ PostgreSQL failed to become healthy within 60s (status: ${PG_STATUS})"
+        docker logs --tail=50 workforce_access_postgres 2>&1 || true
+        exit 1
+    fi
+    sleep 2
+done
+
+# ── 5. Authenticate to ECR & pull new images ──────────────────────────────────
 log "🔐 Logging in to ECR..."
 ECR_REGISTRY=$(echo "${BACKEND_IMAGE}" | cut -d/ -f1)
 aws ecr get-login-password --region "${AWS_REGION}" | \
     docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 
-# ── 5. Pull new images ─────────────────────────────────────────────────────────
 log "⬇️  Pulling new images from ECR..."
 docker compose -f "${COMPOSE_FILE}" \
     --env-file "${ENV_FILE}" \
     --env-file "${DEPLOY_ENV}" \
     pull backend frontend
 
-# ── 6. Run database migrations ────────────────────────────────────────────────
-# CRITICAL: DATABASE_URL must point to the Docker service "postgres:5432",
-# NOT to "localhost:5433" (which is the dev value in apps/server/.env).
-# We use Node to safely URL-encode DB_USER and DB_PASSWORD (handling any special
-# characters such as @, #, :, /, %, etc.) and invoke the hoisted migration CLI.
+# ── 6. Run database migrations (against healthy postgres) ─────────────────────
 log "🗃️  Running database migrations..."
-
 docker run --rm \
     --network workforce_access_network \
     --env-file "${ENV_FILE}" \
@@ -124,8 +144,8 @@ docker run --rm \
       });
     '
 
-# ── 7. Recreate containers ─────────────────────────────────────────────────────
-log "🔄 Restarting application containers..."
+# ── 7. Recreate backend & frontend application containers ─────────────────────
+log "🔄 Starting/recreating application containers..."
 docker compose -f "${COMPOSE_FILE}" \
     --env-file "${ENV_FILE}" \
     --env-file "${DEPLOY_ENV}" \
@@ -142,14 +162,6 @@ docker compose -f "${COMPOSE_FILE}" \
     --env-file "${DEPLOY_ENV}" \
     ps
 
-# PostgreSQL health (uses Docker healthcheck)
-PG_STATUS=$(docker inspect --format='{{.State.Health.Status}}' workforce_access_postgres 2>/dev/null || echo "unknown")
-if [ "${PG_STATUS}" != "healthy" ]; then
-    log "❌ PostgreSQL is not healthy (status: ${PG_STATUS})"
-    exit 1
-fi
-log "   ✓ PostgreSQL: ${PG_STATUS}"
-
 # Backend container state
 BE_STATUS=$(docker inspect --format='{{.State.Status}}' workforce_access_backend 2>/dev/null || echo "unknown")
 if [ "${BE_STATUS}" != "running" ]; then
@@ -159,8 +171,7 @@ if [ "${BE_STATUS}" != "running" ]; then
 fi
 log "   ✓ Backend container: ${BE_STATUS}"
 
-# Backend application health — probe the /health endpoint inside the container
-# (does not depend on Nginx or public routing)
+# Backend application health — probe /health endpoint inside container
 log "🩺 Probing backend /health endpoint inside container..."
 for attempt in 1 2 3 4 5; do
     if docker exec workforce_access_backend \
@@ -193,7 +204,6 @@ log "   ✓ Frontend container: ${FE_STATUS}"
 # ── 10. Public HTTPS health check ─────────────────────────────────────────────
 log "🌐 Running public HTTPS health check (${PUBLIC_URL})..."
 for attempt in 1 2 3 4 5; do
-    # -L follows redirects; -f fails on 4xx/5xx; --max-time caps the wait
     if curl -fsS -L --max-time 20 "${PUBLIC_URL}" -o /dev/null; then
         log "✅ Public health check passed (attempt ${attempt})"
         break
@@ -210,5 +220,5 @@ done
 log "🧹 Cleaning up dangling images..."
 docker image prune -f || true
 
-log "✅ Deployment of ${IMAGE_TAG} complete!"
+log "✅ Deployment of ${IMAGE_TAG} (${COMMIT_SHA}) complete!"
 log "   Application live at: ${PUBLIC_URL}"

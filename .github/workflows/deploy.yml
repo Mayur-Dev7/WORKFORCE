@@ -20,6 +20,22 @@ jobs:
   test:
     name: Typecheck & Tests
     runs-on: ubuntu-24.04
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: workforce_access_test_db
+          POSTGRES_USER: workforce_admin
+          POSTGRES_PASSWORD: workforce_secure_pass_2026
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -35,10 +51,31 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Build shared package
+        run: npm run --workspace=packages/shared build
+
+      - name: Run database migrations & seed for integration tests
+        run: |
+          npx node-pg-migrate up --migrations-dir apps/server/db/migrations
+          npx tsx apps/server/db/seeds/seed.ts
+        env:
+          DATABASE_URL: postgresql://workforce_admin:workforce_secure_pass_2026@localhost:5432/workforce_access_test_db
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_NAME: workforce_access_test_db
+          DB_USER: workforce_admin
+          DB_PASSWORD: workforce_secure_pass_2026
+
       - name: Test — server
         run: npm run test:server -- --run
         env:
           NODE_ENV: test
+          DATABASE_URL: postgresql://workforce_admin:workforce_secure_pass_2026@localhost:5432/workforce_access_test_db
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_NAME: workforce_access_test_db
+          DB_USER: workforce_admin
+          DB_PASSWORD: workforce_secure_pass_2026
 
       - name: Test — web
         run: npm run test:web -- --run
@@ -132,9 +169,9 @@ jobs:
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${{ env.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --comment "Deploy ${IMAGE_TAG}" \
+            --comment "Deploy ${IMAGE_TAG} (${{ github.sha }})" \
             --parameters "commands=[
-              'BACKEND_IMAGE=${BACKEND_IMAGE} FRONTEND_IMAGE=${FRONTEND_IMAGE} IMAGE_TAG=${IMAGE_TAG} bash ${{ env.DEPLOY_SCRIPT }}'
+              'BACKEND_IMAGE=${BACKEND_IMAGE} FRONTEND_IMAGE=${FRONTEND_IMAGE} IMAGE_TAG=${IMAGE_TAG} COMMIT_SHA=${{ github.sha }} bash ${{ env.DEPLOY_SCRIPT }}'
             ]" \
             --timeout-seconds 600 \
             --output text \
