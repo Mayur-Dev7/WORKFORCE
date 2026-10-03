@@ -11,6 +11,7 @@
     "db:migrate:down": "node-pg-migrate down --migrations-dir db/migrations --envPath .env",
     "db:migrate:create": "node-pg-migrate create --migrations-dir db/migrations -m sql",
     "db:seed": "tsx db/seeds/seed.ts",
+    "auth:approve-link": "tsx src/scripts/approve-admin-link.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

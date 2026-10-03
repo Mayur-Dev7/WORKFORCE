@@ -4,8 +4,8 @@ import {
   CreateHolidaySchema,
   UpdateHolidaySchema,
   HolidayQuerySchema,
-  BatchWeeklyRulesSchema,
   UpsertWeeklyRuleSchema,
+  BatchWeeklyRulesSchema,
 } from '../validators/holiday.validators.js';
 import { ErrorCode } from '@workforce/shared';
 import { ZodError } from 'zod';
@@ -26,11 +26,16 @@ export class HolidaysController {
 
   getHolidays = async (req: Request, res: Response): Promise<void> => {
     try {
+      const companyId = req.user?.companyId;
+      if (!companyId) {
+        res.status(403).json({ success: false, error: { code: ErrorCode.USER_NOT_IN_COMPANY, message: 'User must belong to a company' } });
+        return;
+      }
       const q = HolidayQuerySchema.safeParse(req.query);
       if (!q.success) { sendValidationError(res, q.error); return; }
 
       const holidays = await holidayService.getHolidaysForCompany(
-        req.user!.companyId,
+        companyId,
         {
           year: q.data.year,
           officeId: q.data.office_id,
@@ -46,16 +51,25 @@ export class HolidaysController {
 
   createHoliday = async (req: Request, res: Response): Promise<void> => {
     try {
+      const companyId = req.user?.companyId;
+      if (!companyId) {
+        res.status(403).json({ success: false, error: { code: ErrorCode.USER_NOT_IN_COMPANY, message: 'User must belong to a company' } });
+        return;
+      }
       const parsed = CreateHolidaySchema.safeParse(req.body);
       if (!parsed.success) { sendValidationError(res, parsed.error); return; }
 
       const holiday = await holidayService.createHoliday(
         req.user!.userId,
-        req.user!.companyId,
+        companyId,
         parsed.data
       );
       res.status(201).json({ success: true, data: holiday });
-    } catch (err) {
+    } catch (err: any) {
+      if (err.code === ErrorCode.VALIDATION_ERROR) {
+        res.status(400).json({ success: false, error: { code: ErrorCode.VALIDATION_ERROR, message: err.message } });
+        return;
+      }
       console.error('[HolidaysController.createHoliday]', err);
       const code = (err as any)?.code;
       if (code === '23505') {
@@ -68,16 +82,25 @@ export class HolidaysController {
 
   updateHoliday = async (req: Request, res: Response): Promise<void> => {
     try {
+      const companyId = req.user?.companyId;
+      if (!companyId) {
+        res.status(403).json({ success: false, error: { code: ErrorCode.USER_NOT_IN_COMPANY, message: 'User must belong to a company' } });
+        return;
+      }
       const parsed = UpdateHolidaySchema.safeParse(req.body);
       if (!parsed.success) { sendValidationError(res, parsed.error); return; }
 
-      const holiday = await holidayService.updateHoliday(req.user!.userId, req.params.id, parsed.data);
+      const holiday = await holidayService.updateHoliday(req.user!.userId, req.params.id, parsed.data, companyId);
       if (!holiday) {
         res.status(404).json({ success: false, error: { code: 'HOLIDAY_NOT_FOUND', message: 'Holiday not found' } });
         return;
       }
       res.json({ success: true, data: holiday });
-    } catch (err) {
+    } catch (err: any) {
+      if (err.code === ErrorCode.VALIDATION_ERROR) {
+        res.status(400).json({ success: false, error: { code: ErrorCode.VALIDATION_ERROR, message: err.message } });
+        return;
+      }
       console.error('[HolidaysController.updateHoliday]', err);
       res.status(500).json({ success: false, error: { code: ErrorCode.INTERNAL_SERVER_ERROR, message: 'Internal server error' } });
     }
@@ -85,7 +108,12 @@ export class HolidaysController {
 
   deleteHoliday = async (req: Request, res: Response): Promise<void> => {
     try {
-      const deleted = await holidayService.deleteHoliday(req.user!.userId, req.params.id);
+      const companyId = req.user?.companyId;
+      if (!companyId) {
+        res.status(403).json({ success: false, error: { code: ErrorCode.USER_NOT_IN_COMPANY, message: 'User must belong to a company' } });
+        return;
+      }
+      const deleted = await holidayService.deleteHoliday(req.user!.userId, req.params.id, companyId);
       if (!deleted) {
         res.status(404).json({ success: false, error: { code: 'HOLIDAY_NOT_FOUND', message: 'Holiday not found' } });
         return;
@@ -101,7 +129,12 @@ export class HolidaysController {
 
   getWeeklyRules = async (req: Request, res: Response): Promise<void> => {
     try {
-      const rules = await holidayService.getWeeklyRules(req.user!.companyId);
+      const companyId = req.user?.companyId;
+      if (!companyId) {
+        res.status(403).json({ success: false, error: { code: ErrorCode.USER_NOT_IN_COMPANY, message: 'User must belong to a company' } });
+        return;
+      }
+      const rules = await holidayService.getWeeklyRules(companyId);
       res.json({ success: true, data: rules });
     } catch (err) {
       console.error('[HolidaysController.getWeeklyRules]', err);
@@ -111,12 +144,17 @@ export class HolidaysController {
 
   upsertWeeklyRule = async (req: Request, res: Response): Promise<void> => {
     try {
+      const companyId = req.user?.companyId;
+      if (!companyId) {
+        res.status(403).json({ success: false, error: { code: ErrorCode.USER_NOT_IN_COMPANY, message: 'User must belong to a company' } });
+        return;
+      }
       const parsed = UpsertWeeklyRuleSchema.safeParse(req.body);
       if (!parsed.success) { sendValidationError(res, parsed.error); return; }
 
       const rule = await holidayService.upsertWeeklyRule(
         req.user!.userId,
-        req.user!.companyId,
+        companyId,
         parsed.data
       );
       res.json({ success: true, data: rule });
@@ -128,12 +166,17 @@ export class HolidaysController {
 
   batchUpsertWeeklyRules = async (req: Request, res: Response): Promise<void> => {
     try {
+      const companyId = req.user?.companyId;
+      if (!companyId) {
+        res.status(403).json({ success: false, error: { code: ErrorCode.USER_NOT_IN_COMPANY, message: 'User must belong to a company' } });
+        return;
+      }
       const parsed = BatchWeeklyRulesSchema.safeParse(req.body);
       if (!parsed.success) { sendValidationError(res, parsed.error); return; }
 
       const rules = await holidayService.batchUpsertWeeklyRules(
         req.user!.userId,
-        req.user!.companyId,
+        companyId,
         parsed.data.rules
       );
       res.json({ success: true, data: rules });
@@ -147,6 +190,11 @@ export class HolidaysController {
 
   countWorkingDays = async (req: Request, res: Response): Promise<void> => {
     try {
+      const companyId = req.user?.companyId;
+      if (!companyId) {
+        res.status(403).json({ success: false, error: { code: ErrorCode.USER_NOT_IN_COMPANY, message: 'User must belong to a company' } });
+        return;
+      }
       const { start_date, end_date, office_id } = req.query;
       if (!start_date || !end_date) {
         res.status(400).json({ success: false, error: { code: ErrorCode.VALIDATION_ERROR, message: 'start_date and end_date query params required (YYYY-MM-DD)' } });
@@ -157,7 +205,7 @@ export class HolidaysController {
       const officeId = office_id ? String(office_id) : null;
 
       const days = await holidayService.countWorkingDays(
-        req.user!.companyId,
+        companyId,
         officeId,
         startDate,
         endDate

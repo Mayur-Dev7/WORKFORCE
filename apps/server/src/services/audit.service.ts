@@ -17,6 +17,7 @@ function mapRowToAuditLog(row: AuditLogRow): AuditLog {
 
 export class AuditService {
   async getAuditLogs(params?: {
+    companyId?: string;
     action?: string;
     entityType?: string;
     actorUserId?: string;

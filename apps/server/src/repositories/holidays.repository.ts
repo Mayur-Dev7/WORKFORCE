@@ -46,11 +46,14 @@ export class HolidaysRepository {
     return res.rows;
   }
 
-  async findById(id: string): Promise<HolidayRow | null> {
-    const res = await this.db.query<HolidayRow>(
-      `SELECT * FROM holidays WHERE id = $1`,
-      [id]
-    );
+  async findById(id: string, companyId?: string): Promise<HolidayRow | null> {
+    let query = `SELECT * FROM holidays WHERE id = $1`;
+    const params: unknown[] = [id];
+    if (companyId) {
+      query += ` AND company_id = $2`;
+      params.push(companyId);
+    }
+    const res = await this.db.query<HolidayRow>(query, params);
     return res.rows[0] ?? null;
   }
 
@@ -85,7 +88,8 @@ export class HolidaysRepository {
   async update(
     id: string,
     data: Partial<{ name: string; description: string | null; holiday_date: string; is_recurring: boolean; is_active: boolean }>,
-    client?: PoolClient
+    client?: PoolClient,
+    companyId?: string
   ): Promise<HolidayRow | null> {
     const db = client ?? this.db;
     const setClauses: string[] = [];
@@ -102,20 +106,28 @@ export class HolidaysRepository {
 
     setClauses.push(`updated_at = NOW()`);
     values.push(id);
+    let whereClause = `WHERE id = $${idx++}`;
+    if (companyId) {
+      whereClause += ` AND company_id = $${idx++}`;
+      values.push(companyId);
+    }
 
     const res = await db.query<HolidayRow>(
-      `UPDATE holidays SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *`,
+      `UPDATE holidays SET ${setClauses.join(', ')} ${whereClause} RETURNING *`,
       values
     );
     return res.rows[0] ?? null;
   }
 
-  async deleteById(id: string, client?: PoolClient): Promise<boolean> {
+  async deleteById(id: string, client?: PoolClient, companyId?: string): Promise<boolean> {
     const db = client ?? this.db;
-    const res = await db.query(
-      `DELETE FROM holidays WHERE id = $1`,
-      [id]
-    );
+    let query = `DELETE FROM holidays WHERE id = $1`;
+    const params: unknown[] = [id];
+    if (companyId) {
+      query += ` AND company_id = $2`;
+      params.push(companyId);
+    }
+    const res = await db.query(query, params);
     return (res.rowCount ?? 0) > 0;
   }
 }

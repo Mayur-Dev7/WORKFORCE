@@ -52,7 +52,7 @@ export class ShiftsController {
 
   async getById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const shift = await shiftsService.getById(req.params.id);
+      const shift = await shiftsService.getById(req.params.id, req.user?.companyId || undefined);
       if (!shift) {
         res.status(404).json({
           success: false,
@@ -95,7 +95,12 @@ export class ShiftsController {
   async update(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const validated = UpdateShiftSchema.parse(req.body);
-      const shift = await shiftsService.update(req.user!.userId, req.params.id, validated);
+      const shift = await shiftsService.update(
+        req.user!.userId,
+        req.params.id,
+        validated,
+        req.user?.companyId || undefined
+      );
       if (!shift) {
         res.status(404).json({
           success: false,
@@ -114,7 +119,11 @@ export class ShiftsController {
 
   async delete(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const deleted = await shiftsService.delete(req.user!.userId, req.params.id);
+      const deleted = await shiftsService.delete(
+        req.user!.userId,
+        req.params.id,
+        req.user?.companyId || undefined
+      );
       if (!deleted) {
         res.status(404).json({
           success: false,

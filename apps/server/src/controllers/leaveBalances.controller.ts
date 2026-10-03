@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { leaveBalanceService } from '../services/leaveBalance.service.js';
+import { usersRepository } from '../repositories/users.repository.js';
+import { leaveTypesRepository } from '../repositories/leaveTypes.repository.js';
 import { AllocateBalanceSchema, CreateLeaveTypeSchema, UpdateLeaveTypeSchema } from '../validators/leave.validators.js';
 import { ErrorCode } from '@workforce/shared';
 import { ZodError } from 'zod';
@@ -20,7 +22,11 @@ export class LeaveBalancesController {
 
   getLeaveTypes = async (req: Request, res: Response): Promise<void> => {
     try {
-      const companyId = req.user!.companyId;
+      const companyId = req.user?.companyId;
+      if (!companyId) {
+        res.status(403).json({ success: false, error: { code: ErrorCode.USER_NOT_IN_COMPANY, message: 'User must belong to a company' } });
+        return;
+      }
       const types = await leaveBalanceService.getLeaveTypes(companyId);
       res.json({ success: true, data: types });
     } catch (err) {
@@ -31,12 +37,17 @@ export class LeaveBalancesController {
 
   createLeaveType = async (req: Request, res: Response): Promise<void> => {
     try {
+      const companyId = req.user?.companyId;
+      if (!companyId) {
+        res.status(403).json({ success: false, error: { code: ErrorCode.USER_NOT_IN_COMPANY, message: 'User must belong to a company' } });
+        return;
+      }
       const parsed = CreateLeaveTypeSchema.safeParse(req.body);
       if (!parsed.success) { sendValidationError(res, parsed.error); return; }
 
       const type = await leaveBalanceService.createLeaveType(
         req.user!.userId,
-        req.user!.companyId,
+        companyId,
         parsed.data
       );
       res.status(201).json({ success: true, data: type });
@@ -48,10 +59,15 @@ export class LeaveBalancesController {
 
   updateLeaveType = async (req: Request, res: Response): Promise<void> => {
     try {
+      const companyId = req.user?.companyId;
+      if (!companyId) {
+        res.status(403).json({ success: false, error: { code: ErrorCode.USER_NOT_IN_COMPANY, message: 'User must belong to a company' } });
+        return;
+      }
       const parsed = UpdateLeaveTypeSchema.safeParse(req.body);
       if (!parsed.success) { sendValidationError(res, parsed.error); return; }
 
-      const type = await leaveBalanceService.updateLeaveType(req.params.id, parsed.data);
+      const type = await leaveBalanceService.updateLeaveType(req.params.id, parsed.data, companyId);
       if (!type) {
         res.status(404).json({ success: false, error: { code: ErrorCode.LEAVE_TYPE_NOT_FOUND, message: 'Leave type not found' } });
         return;
@@ -67,8 +83,13 @@ export class LeaveBalancesController {
 
   getCompanyBalances = async (req: Request, res: Response): Promise<void> => {
     try {
+      const companyId = req.user?.companyId;
+      if (!companyId) {
+        res.status(403).json({ success: false, error: { code: ErrorCode.USER_NOT_IN_COMPANY, message: 'User must belong to a company' } });
+        return;
+      }
       const year = req.query.year ? Number(req.query.year) : undefined;
-      const balances = await leaveBalanceService.getBalancesForCompany(req.user!.companyId, year);
+      const balances = await leaveBalanceService.getBalancesForCompany(companyId, year);
       res.json({ success: true, data: balances });
     } catch (err) {
       console.error('[LeaveBalancesController.getCompanyBalances]', err);
@@ -78,8 +99,25 @@ export class LeaveBalancesController {
 
   allocateBalance = async (req: Request, res: Response): Promise<void> => {
     try {
+      const companyId = req.user?.companyId;
+      if (!companyId) {
+        res.status(403).json({ success: false, error: { code: ErrorCode.USER_NOT_IN_COMPANY, message: 'User must belong to a company' } });
+        return;
+      }
       const parsed = AllocateBalanceSchema.safeParse(req.body);
       if (!parsed.success) { sendValidationError(res, parsed.error); return; }
+
+      const targetUser = await usersRepository.findById(parsed.data.user_id, undefined, companyId);
+      if (!targetUser) {
+        res.status(404).json({ success: false, error: { code: ErrorCode.USER_NOT_FOUND, message: 'User not found in your company' } });
+        return;
+      }
+
+      const targetLeaveType = await leaveTypesRepository.findById(parsed.data.leave_type_id, companyId);
+      if (!targetLeaveType) {
+        res.status(404).json({ success: false, error: { code: ErrorCode.LEAVE_TYPE_NOT_FOUND, message: 'Leave type not found in your company' } });
+        return;
+      }
 
       const balance = await leaveBalanceService.allocateBalance(req.user!.userId, parsed.data);
       res.status(201).json({ success: true, data: balance });
@@ -91,6 +129,11 @@ export class LeaveBalancesController {
 
   initializeYearlyBalances = async (req: Request, res: Response): Promise<void> => {
     try {
+      const companyId = req.user?.companyId;
+      if (!companyId) {
+        res.status(403).json({ success: false, error: { code: ErrorCode.USER_NOT_IN_COMPANY, message: 'User must belong to a company' } });
+        return;
+      }
       const year = req.body?.year ?? new Date().getUTCFullYear();
       if (typeof year !== 'number' || year < 2000 || year > 2100) {
         res.status(400).json({ success: false, error: { code: ErrorCode.VALIDATION_ERROR, message: 'year must be a number between 2000 and 2100' } });
@@ -99,7 +142,7 @@ export class LeaveBalancesController {
 
       const result = await leaveBalanceService.initializeYearlyBalancesForCompany(
         req.user!.userId,
-        req.user!.companyId,
+        companyId,
         year
       );
       res.json({ success: true, data: result });

@@ -18,6 +18,7 @@ import { leaveRequestsRepository, LeaveRequestRow } from '../repositories/leaveR
 import { leaveBalancesRepository } from '../repositories/leaveBalances.repository.js';
 import { leaveTypesRepository } from '../repositories/leaveTypes.repository.js';
 import { auditLogsRepository } from '../repositories/auditLogs.repository.js';
+import { usersRepository } from '../repositories/users.repository.js';
 import { holidayService } from './holiday.service.js';
 import { countWorkingDays } from '../lib/calendar/holidayResolver.js';
 import { AuditAction, ErrorCode } from '@workforce/shared';
@@ -126,6 +127,7 @@ export class LeaveService {
 
       // Create leave request
       const request = await leaveRequestsRepository.create({
+        company_id: userContext.company_id,
         user_id: actorUserId,
         leave_type_id: data.leave_type_id,
         start_date: startDate,
@@ -144,6 +146,7 @@ export class LeaveService {
       );
 
       await auditLogsRepository.create({
+        company_id: userContext.company_id,
         actor_user_id: actorUserId,
         action: AuditAction.LEAVE_APPLIED,
         entity_type: 'leave_request',
@@ -168,9 +171,14 @@ export class LeaveService {
     action: 'APPROVE' | 'REJECT',
     reviewerNote: string | null
   ): Promise<LeaveRequestRow> {
+    const reviewerContext = await usersRepository.findById(actorUserId);
+    if (!reviewerContext || !reviewerContext.company_id) {
+      throw new AppError(ErrorCode.FORBIDDEN, 'Reviewer does not belong to a company');
+    }
+
     return withTransaction(async (client) => {
-      // Lock the request row
-      const request = await leaveRequestsRepository.lockById(requestId, client);
+      // Lock the request row within the reviewer's company
+      const request = await leaveRequestsRepository.lockById(requestId, client, reviewerContext.company_id!);
       if (!request) {
         throw new AppError(ErrorCode.LEAVE_NOT_FOUND, 'Leave request not found', 404);
       }
@@ -249,7 +257,7 @@ export class LeaveService {
     isAdmin: boolean
   ): Promise<LeaveRequestRow> {
     return withTransaction(async (client) => {
-      const request = await leaveRequestsRepository.lockById(requestId, client);
+      const request = await leaveRequestsRepository.lockById(requestId, client, actorCompanyId || undefined);
       if (!request) {
         throw new AppError(ErrorCode.LEAVE_NOT_FOUND, 'Leave request not found', 404);
       }
@@ -334,8 +342,8 @@ export class LeaveService {
     return leaveRequestsRepository.findByCompanyId(companyId, params);
   }
 
-  async getRequestById(id: string): Promise<LeaveRequestRow | null> {
-    return leaveRequestsRepository.findById(id);
+  async getRequestById(id: string, companyId?: string): Promise<LeaveRequestRow | null> {
+    return leaveRequestsRepository.findById(id, undefined, companyId);
   }
 }
 

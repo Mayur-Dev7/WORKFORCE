@@ -4,6 +4,7 @@ import { AuditAction, AuditLog } from '@workforce/shared';
 
 export interface AuditLogRow {
   id: string;
+  company_id: string | null;
   actor_user_id: string | null;
   action: string;
   entity_type: string;
@@ -17,6 +18,7 @@ export interface AuditLogRow {
 export class AuditLogsRepository {
   async create(
     log: {
+      company_id?: string | null;
       actor_user_id?: string | null;
       action: AuditAction | string;
       entity_type: string;
@@ -28,12 +30,13 @@ export class AuditLogsRepository {
     const queryClient = client || pool;
     const query = `
       INSERT INTO audit_logs (
-        actor_user_id, action, entity_type, entity_id, metadata
+        company_id, actor_user_id, action, entity_type, entity_id, metadata
       )
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `;
     const res = await queryClient.query<AuditLogRow>(query, [
+      log.company_id || null,
       log.actor_user_id || null,
       log.action,
       log.entity_type,
@@ -44,6 +47,7 @@ export class AuditLogsRepository {
   }
 
   async findAll(params?: {
+    companyId?: string;
     action?: string;
     entityType?: string;
     actorUserId?: string;
@@ -54,6 +58,10 @@ export class AuditLogsRepository {
     const values: unknown[] = [];
     let idx = 1;
 
+    if (params?.companyId) {
+      conditions.push(`a.company_id = $${idx++}`);
+      values.push(params.companyId);
+    }
     if (params?.action) {
       conditions.push(`a.action = $${idx++}`);
       values.push(params.action);

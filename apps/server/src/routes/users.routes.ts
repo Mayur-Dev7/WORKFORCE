@@ -15,6 +15,9 @@ router.get('/', requirePermission(PermissionKey.USER_READ), usersController.getA
 router.post('/', requirePermission(PermissionKey.USER_CREATE), usersController.create);
 router.get('/:id', requirePermission(PermissionKey.USER_READ), usersController.getById);
 router.patch('/:id', requirePermission(PermissionKey.USER_UPDATE), usersController.update);
+router.put('/:id', requirePermission(PermissionKey.USER_UPDATE), usersController.update);
+router.post('/:id/remove', requirePermission(PermissionKey.USER_DISABLE), usersController.removeEmployee);
 router.post('/:id/enroll-face', requirePermission(PermissionKey.FACE_ENROLL), usersController.enrollFace);
+router.post('/:id/face', requirePermission(PermissionKey.FACE_ENROLL), usersController.enrollFace);
 
 export default router;

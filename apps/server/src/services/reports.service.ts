@@ -11,8 +11,8 @@ export interface ReportFilterOptions {
 }
 
 export class ReportsService {
-  async getAttendanceReport(filters: ReportFilterOptions): Promise<AttendanceReportItem[]> {
-    return attendanceRepository.getReportData(filters);
+  async getAttendanceReport(companyId: string, filters: ReportFilterOptions): Promise<AttendanceReportItem[]> {
+    return attendanceRepository.getReportData({ ...filters, companyId });
   }
 
   async getAdminStats(companyId: string) {

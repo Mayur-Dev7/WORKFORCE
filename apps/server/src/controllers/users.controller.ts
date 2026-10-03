@@ -8,7 +8,7 @@ export class UsersController {
     try {
       const { officeId, departmentId, roleId, isActive, search } = req.query;
       const users = await usersService.getAllUsers({
-        companyId: req.user?.companyId,
+        companyId: req.user?.companyId || undefined,
         officeId: officeId as string | undefined,
         departmentId: departmentId as string | undefined,
         roleId: roleId as string | undefined,
@@ -27,7 +27,7 @@ export class UsersController {
 
   async getById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const user = await usersService.getUserById(req.params.id);
+      const user = await usersService.getUserById(req.params.id, req.user?.companyId || undefined);
       if (!user) {
         res.status(404).json({
           success: false,
@@ -116,6 +116,30 @@ export class UsersController {
       res.status(200).json({
         success: true,
         data: faceData,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async removeEmployee(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      await usersService.removeUserFromCompany(req.user!.userId, req.params.id);
+      res.status(200).json({
+        success: true,
+        data: { message: 'User removed from company successfully' },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async leaveCompany(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      await usersService.leaveCompany(req.user!.userId);
+      res.status(200).json({
+        success: true,
+        data: { message: 'You have left the company successfully' },
       });
     } catch (err) {
       next(err);

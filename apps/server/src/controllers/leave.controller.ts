@@ -117,7 +117,11 @@ export class LeaveController {
       const q = LeaveQuerySchema.safeParse(req.query);
       if (!q.success) { sendValidationError(res, q.error); return; }
 
-      const companyId = req.user!.companyId;
+      const companyId = req.user?.companyId;
+      if (!companyId) {
+        res.status(403).json({ success: false, error: { code: ErrorCode.USER_NOT_IN_COMPANY, message: 'User must belong to a company' } });
+        return;
+      }
       const { rows, total } = await leaveService.getCompanyRequests(companyId, {
         ...q.data,
         userId: q.data.user_id,
@@ -155,7 +159,8 @@ export class LeaveController {
 
   getRequestById = async (req: Request, res: Response): Promise<void> => {
     try {
-      const request = await leaveService.getRequestById(req.params.id);
+      const companyId = req.user?.companyId;
+      const request = await leaveService.getRequestById(req.params.id, companyId || undefined);
       if (!request) {
         res.status(404).json({ success: false, error: { code: ErrorCode.LEAVE_NOT_FOUND, message: 'Leave request not found' } });
         return;

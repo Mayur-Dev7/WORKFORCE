@@ -65,18 +65,21 @@ export class LeaveBalancesRepository {
   }
 
   async upsertAllocation(
-    data: { user_id: string; leave_type_id: string; leave_year: number; allocated_days: number },
+    data: { company_id?: string; user_id: string; leave_type_id: string; leave_year: number; allocated_days: number },
     client?: PoolClient
   ): Promise<LeaveBalanceRow> {
     const db = client ?? this.db;
     const res = await db.query<LeaveBalanceRow>(
-      `INSERT INTO leave_balances (user_id, leave_type_id, leave_year, allocated_days)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO leave_balances (company_id, user_id, leave_type_id, leave_year, allocated_days)
+       VALUES (
+         COALESCE($1, (SELECT company_id FROM leave_types WHERE id = $3)),
+         $2, $3, $4, $5
+       )
        ON CONFLICT (user_id, leave_type_id, leave_year) DO UPDATE
          SET allocated_days = EXCLUDED.allocated_days,
              updated_at = NOW()
        RETURNING *`,
-      [data.user_id, data.leave_type_id, data.leave_year, data.allocated_days]
+      [data.company_id || null, data.user_id, data.leave_type_id, data.leave_year, data.allocated_days]
     );
     return res.rows[0];
   }
@@ -163,8 +166,7 @@ export class LeaveBalancesRepository {
          (lb.allocated_days - lb.used_days - lb.pending_days) AS remaining_days
        FROM leave_balances lb
        JOIN leave_types lt ON lb.leave_type_id = lt.id
-       JOIN users u ON lb.user_id = u.id
-       WHERE u.company_id = $1 AND lb.leave_year = $2
+       WHERE lb.company_id = $1 AND lb.leave_year = $2
        ORDER BY lb.user_id, lt.code ASC`,
       [companyId, year]
     );

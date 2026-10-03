@@ -4,6 +4,7 @@ import { AttendanceSession, AttendanceReportItem } from '@workforce/shared';
 
 export interface AttendanceSessionRow {
   id: string;
+  company_id: string;
   user_id: string;
   office_id: string;
   check_in_at: Date;
@@ -20,6 +21,8 @@ export interface AttendanceSessionRow {
   check_out_distance_meters: number | null;
   check_out_face_similarity: number | null;
   check_out_liveness_score: number | null;
+  auto_closed?: boolean;
+  auto_close_reason?: string | null;
   created_at: Date;
 
   user_name?: string;
@@ -33,6 +36,7 @@ export class AttendanceRepository {
   private baseSelect = `
     SELECT 
       s.id,
+      s.company_id,
       s.user_id,
       s.office_id,
       s.check_in_at,
@@ -49,6 +53,8 @@ export class AttendanceRepository {
       s.check_out_distance_meters,
       s.check_out_face_similarity,
       s.check_out_liveness_score,
+      s.auto_closed,
+      s.auto_close_reason,
       s.created_at,
       u.name as user_name,
       u.employee_code,
@@ -104,8 +110,11 @@ export class AttendanceRepository {
     return res.rows[0] || null;
   }
 
-  async createCheckIn(
+  createCheckIn = this.createSession.bind(this);
+
+  async createSession(
     session: {
+      company_id: string;
       user_id: string;
       office_id: string;
       check_in_latitude: number;
@@ -119,6 +128,7 @@ export class AttendanceRepository {
   ): Promise<AttendanceSessionRow> {
     const insertQuery = `
       INSERT INTO attendance_sessions (
+        company_id,
         user_id,
         office_id,
         check_in_at,
@@ -129,10 +139,11 @@ export class AttendanceRepository {
         check_in_face_similarity,
         check_in_liveness_score
       )
-      VALUES ($1, $2, NOW(), $3, $4, $5, $6, $7, $8)
+      VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9)
       RETURNING id
     `;
     const res = await client.query<{ id: string }>(insertQuery, [
+      session.company_id,
       session.user_id,
       session.office_id,
       session.check_in_latitude,
@@ -196,22 +207,49 @@ export class AttendanceRepository {
     return updated;
   }
 
-  async findById(id: string, client?: PoolClient): Promise<AttendanceSessionRow | null> {
+  async autoCloseOpenSessionsForUser(
+    userId: string,
+    reason: 'left_company' | 'removed',
+    client?: PoolClient
+  ): Promise<number> {
     const queryClient = client || pool;
-    const query = `
+    const res = await queryClient.query(
+      `UPDATE attendance_sessions
+       SET check_out_at = NOW(),
+           check_out_face_similarity = NULL,
+           auto_closed = TRUE,
+           auto_close_reason = $1
+       WHERE user_id = $2 AND check_out_at IS NULL`,
+      [reason, userId]
+    );
+    return res.rowCount ?? 0;
+  }
+
+  async findById(id: string, client?: PoolClient, companyId?: string): Promise<AttendanceSessionRow | null> {
+    const queryClient = client || pool;
+    let query = `
       ${this.baseSelect}
       WHERE s.id = $1
     `;
-    const res = await queryClient.query<AttendanceSessionRow>(query, [id]);
+    const params: unknown[] = [id];
+    if (companyId) {
+      query += ` AND s.company_id = $2`;
+      params.push(companyId);
+    }
+    const res = await queryClient.query<AttendanceSessionRow>(query, params);
     return res.rows[0] || null;
   }
 
-  async getUserHistory(userId: string, limit = 50, month?: string): Promise<AttendanceSessionRow[]> {
+  async getUserHistory(userId: string, limit = 50, month?: string, companyId?: string): Promise<AttendanceSessionRow[]> {
     let query = `
       ${this.baseSelect}
       WHERE s.user_id = $1
     `;
     const params: any[] = [userId];
+    if (companyId) {
+      params.push(companyId);
+      query += ` AND s.company_id = $${params.length}`;
+    }
     if (month) {
       params.push(month);
       query += ` AND TO_CHAR(s.check_in_at, 'YYYY-MM') = $${params.length}`;
@@ -222,10 +260,10 @@ export class AttendanceRepository {
     return res.rows;
   }
 
-  async getTeamAttendance(officeId?: string, departmentId?: string, limit = 100): Promise<AttendanceSessionRow[]> {
-    const conditions: string[] = [];
-    const values: unknown[] = [];
-    let idx = 1;
+  async getTeamAttendance(companyId: string, officeId?: string, departmentId?: string, limit = 100): Promise<AttendanceSessionRow[]> {
+    const conditions: string[] = ['s.company_id = $1'];
+    const values: unknown[] = [companyId];
+    let idx = 2;
 
     if (officeId) {
       conditions.push(`s.office_id = $${idx++}`);
@@ -239,7 +277,7 @@ export class AttendanceRepository {
     values.push(limit);
     const limitPlaceholder = `$${idx}`;
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const where = `WHERE ${conditions.join(' AND ')}`;
     const query = `
       ${this.baseSelect}
       ${where}
@@ -251,6 +289,7 @@ export class AttendanceRepository {
   }
 
   async getReportData(filters: {
+    companyId: string;
     startDate?: string;
     endDate?: string;
     officeId?: string;
@@ -258,9 +297,9 @@ export class AttendanceRepository {
     userId?: string;
     status?: 'ACTIVE' | 'COMPLETED' | 'ALL';
   }): Promise<AttendanceReportItem[]> {
-    const conditions: string[] = [];
-    const values: unknown[] = [];
-    let idx = 1;
+    const conditions: string[] = ['s.company_id = $1'];
+    const values: unknown[] = [filters.companyId];
+    let idx = 2;
 
     if (filters.startDate) {
       conditions.push(`s.check_in_at >= $${idx++}`);
@@ -288,7 +327,7 @@ export class AttendanceRepository {
       conditions.push(`s.check_out_at IS NOT NULL`);
     }
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const where = `WHERE ${conditions.join(' AND ')}`;
 
     const query = `
       SELECT 
@@ -346,9 +385,8 @@ export class AttendanceRepository {
           COUNT(DISTINCT s.user_id)::int as today_attendance,
           COUNT(DISTINCT s.user_id) FILTER (WHERE s.check_out_at IS NULL)::int as currently_checked_in
         FROM attendance_sessions s
-        JOIN users u ON s.user_id = u.id
         CROSS JOIN today_start t
-        WHERE u.company_id = $1 AND s.check_in_at >= t.start_time
+        WHERE s.company_id = $1 AND s.check_in_at >= t.start_time
       ),
       today_failures AS (
         SELECT 
@@ -356,7 +394,7 @@ export class AttendanceRepository {
           COUNT(*) FILTER (WHERE l.failure_reason ILIKE '%GEOFENCE%')::int as failed_geofence
         FROM login_attempts l
         CROSS JOIN today_start t
-        WHERE l.created_at >= t.start_time
+        WHERE l.company_id = $1 AND l.created_at >= t.start_time
       )
       SELECT 
         ec.total_employees,

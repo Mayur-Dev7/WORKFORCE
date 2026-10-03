@@ -10,5 +10,6 @@ router.use(requireAuth());
 router.get('/', requirePermission(PermissionKey.DEPARTMENT_READ), departmentsController.getAll);
 router.post('/', requirePermission(PermissionKey.DEPARTMENT_CREATE), departmentsController.create);
 router.patch('/:id', requirePermission(PermissionKey.DEPARTMENT_UPDATE), departmentsController.update);
+router.put('/:id', requirePermission(PermissionKey.DEPARTMENT_UPDATE), departmentsController.update);
 
 export default router;

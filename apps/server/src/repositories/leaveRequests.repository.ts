@@ -25,31 +25,42 @@ export class LeaveRequestsRepository {
     LEFT JOIN users rv ON lr.reviewed_by = rv.id
   `;
 
-  async findById(id: string, client?: PoolClient): Promise<LeaveRequestRow | null> {
+  async findById(id: string, client?: PoolClient, companyId?: string): Promise<LeaveRequestRow | null> {
     const db = client ?? this.db;
-    const res = await db.query<LeaveRequestRow>(
-      `${this.joinedSelect} WHERE lr.id = $1`,
-      [id]
-    );
+    let query = `${this.joinedSelect} WHERE lr.id = $1`;
+    const params: unknown[] = [id];
+    if (companyId) {
+      query += ` AND lr.company_id = $2`;
+      params.push(companyId);
+    }
+    const res = await db.query<LeaveRequestRow>(query, params);
     return res.rows[0] ?? null;
   }
 
-  async lockById(id: string, client: PoolClient): Promise<LeaveRequestRow | null> {
-    const res = await client.query<LeaveRequestRow>(
-      `SELECT * FROM leave_requests WHERE id = $1 FOR UPDATE`,
-      [id]
-    );
+  async lockById(id: string, client: PoolClient, companyId?: string): Promise<LeaveRequestRow | null> {
+    let query = `SELECT * FROM leave_requests WHERE id = $1`;
+    const params: unknown[] = [id];
+    if (companyId) {
+      query += ` AND company_id = $2`;
+      params.push(companyId);
+    }
+    query += ` FOR UPDATE`;
+    const res = await client.query<LeaveRequestRow>(query, params);
     return res.rows[0] ?? null;
   }
 
   async findByUserId(
     userId: string,
-    params?: { year?: number; status?: LeaveStatus; limit?: number; offset?: number }
+    params?: { year?: number; status?: LeaveStatus; limit?: number; offset?: number; companyId?: string }
   ): Promise<{ rows: LeaveRequestRow[]; total: number }> {
     const conditions = [`lr.user_id = $1`];
     const values: unknown[] = [userId];
     let idx = 2;
 
+    if (params?.companyId) {
+      conditions.push(`lr.company_id = $${idx++}`);
+      values.push(params.companyId);
+    }
     if (params?.year) {
       conditions.push(`EXTRACT(YEAR FROM lr.start_date) = $${idx++}`);
       values.push(params.year);
@@ -85,7 +96,7 @@ export class LeaveRequestsRepository {
     companyId: string,
     params?: { year?: number; status?: LeaveStatus; userId?: string; limit?: number; offset?: number }
   ): Promise<{ rows: LeaveRequestRow[]; total: number }> {
-    const conditions = [`u.company_id = $1`];
+    const conditions = [`lr.company_id = $1`];
     const values: unknown[] = [companyId];
     let idx = 2;
 
@@ -107,7 +118,6 @@ export class LeaveRequestsRepository {
     const countRes = await this.db.query<{ total: number }>(
       `SELECT COUNT(*)::int AS total
        FROM leave_requests lr
-       JOIN users u ON lr.user_id = u.id
        ${where}`,
       values
     );
@@ -127,8 +137,10 @@ export class LeaveRequestsRepository {
     return { rows: res.rows, total };
   }
 
+  hasOverlap = this.hasOverlapping.bind(this);
+
   /** Check if any PENDING or APPROVED requests overlap the given date range for a user */
-  async hasOverlap(
+  async hasOverlapping(
     userId: string,
     startDate: Date,
     endDate: Date,
@@ -155,6 +167,7 @@ export class LeaveRequestsRepository {
 
   async create(
     data: {
+      company_id: string;
       user_id: string;
       leave_type_id: string;
       start_date: Date;
@@ -166,10 +179,11 @@ export class LeaveRequestsRepository {
   ): Promise<LeaveRequestRow> {
     const res = await client.query<LeaveRequestRow>(
       `INSERT INTO leave_requests
-         (user_id, leave_type_id, start_date, end_date, days_requested, reason)
-       VALUES ($1, $2, $3, $4, $5, $6)
+         (company_id, user_id, leave_type_id, start_date, end_date, days_requested, reason)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
       [
+        data.company_id,
         data.user_id,
         data.leave_type_id,
         data.start_date.toISOString().slice(0, 10),
@@ -179,6 +193,17 @@ export class LeaveRequestsRepository {
       ]
     );
     return res.rows[0];
+  }
+
+  async cancelPendingByUserId(userId: string, client?: PoolClient): Promise<number> {
+    const db = client ?? this.db;
+    const res = await db.query(
+      `UPDATE leave_requests
+       SET status = 'CANCELLED', updated_at = NOW()
+       WHERE user_id = $1 AND status = 'PENDING'`,
+      [userId]
+    );
+    return res.rowCount ?? 0;
   }
 
   async updateStatus(

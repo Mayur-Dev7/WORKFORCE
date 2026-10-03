@@ -3,9 +3,6 @@ dotenv.config();
 
 import { createApp } from './app.js';
 import { pool, closePool } from './lib/db.js';
-import { validateBootstrapConfig } from './modules/firebase-auth/bootstrap.config.js';
-
-validateBootstrapConfig();
 
 const app = createApp();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000;

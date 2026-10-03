@@ -3,6 +3,12 @@ import { withTransaction } from '../lib/db.js';
 import { usersRepository, UserRow } from '../repositories/users.repository.js';
 import { faceTemplatesRepository } from '../repositories/faceTemplates.repository.js';
 import { auditLogsRepository } from '../repositories/auditLogs.repository.js';
+import { companiesRepository } from '../repositories/companies.repository.js';
+import { officesRepository } from '../repositories/offices.repository.js';
+import { departmentsRepository } from '../repositories/departments.repository.js';
+import { rolesRepository } from '../repositories/roles.repository.js';
+import { attendanceRepository } from '../repositories/attendance.repository.js';
+import { leaveRequestsRepository } from '../repositories/leaveRequests.repository.js';
 import { faceService } from './face.service.js';
 import { User, RoleName, PermissionKey, AuditAction, ErrorCode } from '@workforce/shared';
 import { getIdentityProvisioner } from '../modules/firebase-auth/identity-provisioner.js';
@@ -47,8 +53,8 @@ export class UsersService {
     return rows.map(mapRowToUser);
   }
 
-  async getUserById(id: string): Promise<User | null> {
-    const row = await usersRepository.findById(id);
+  async getUserById(id: string, callerCompanyId?: string): Promise<User | null> {
+    const row = await usersRepository.findById(id, undefined, callerCompanyId);
     return row ? mapRowToUser(row) : null;
   }
 
@@ -65,11 +71,67 @@ export class UsersService {
       password?: string;
     }
   ): Promise<User> {
-    const existing = await usersRepository.findByCodeOrEmail(data.employee_code);
-    if (existing) {
-      const err = new Error('Employee code or email already in use');
+    const creator = await usersRepository.findById(creatorUserId);
+    if (!creator || !creator.company_id) {
+      const err = new Error('Creator must belong to a company');
+      (err as any).code = ErrorCode.FORBIDDEN;
+      throw err;
+    }
+
+    if (creator.company_id !== data.company_id) {
+      const err = new Error('Cannot create users in another company');
+      (err as any).code = ErrorCode.CROSS_TENANT_FORBIDDEN;
+      throw err;
+    }
+
+    // Email collision check globally (never attach existing user without acceptance)
+    const existingByEmail = await usersRepository.findByEmail(data.email);
+    if (existingByEmail) {
+      const err = new Error('A user with this email address already exists. Send an invitation instead.');
       (err as any).code = ErrorCode.VALIDATION_ERROR;
       throw err;
+    }
+
+    const existingByCode = await usersRepository.findByEmployeeCode(data.employee_code);
+    if (existingByCode) {
+      const err = new Error('Employee code already in use');
+      (err as any).code = ErrorCode.VALIDATION_ERROR;
+      throw err;
+    }
+
+    // Role validation
+    const targetRole = await rolesRepository.findById(data.role_id);
+    if (!targetRole) {
+      const err = new Error('Invalid role specified');
+      (err as any).code = ErrorCode.VALIDATION_ERROR;
+      throw err;
+    }
+    if (targetRole.name === RoleName.SUPER_ADMIN) {
+      const err = new Error('Assigning SUPER_ADMIN role is forbidden');
+      (err as any).code = ErrorCode.CANNOT_ASSIGN_SUPER_ADMIN;
+      throw err;
+    }
+    if (targetRole.name === RoleName.COMPANY_ADMIN && creator.role_name !== RoleName.COMPANY_ADMIN) {
+      const err = new Error('Only a Company Admin can assign the Company Admin role');
+      (err as any).code = ErrorCode.PERMISSION_DENIED;
+      throw err;
+    }
+
+    // Office & Department scoping to company
+    const office = await officesRepository.findById(data.office_id, undefined, creator.company_id);
+    if (!office) {
+      const err = new Error('Specified office does not belong to your company');
+      (err as any).code = ErrorCode.VALIDATION_ERROR;
+      throw err;
+    }
+
+    if (data.department_id) {
+      const dept = await departmentsRepository.findById(data.department_id, undefined, creator.company_id);
+      if (!dept) {
+        const err = new Error('Specified department does not belong to your company');
+        (err as any).code = ErrorCode.VALIDATION_ERROR;
+        throw err;
+      }
     }
 
     const mode = getAuthProviderMode();
@@ -101,13 +163,14 @@ export class UsersService {
           id: createdRow.id,
           email: createdRow.email,
           name: createdRow.name,
-          employee_code: createdRow.employee_code,
+          employee_code: createdRow.employee_code || '',
         },
         client
       );
 
       await auditLogsRepository.create(
         {
+          company_id: data.company_id,
           actor_user_id: creatorUserId,
           action: AuditAction.USER_CREATED,
           entity_type: 'user',
@@ -143,11 +206,56 @@ export class UsersService {
       password?: string;
     }
   ): Promise<User> {
-    const existing = await usersRepository.findById(id);
+    const updater = await usersRepository.findById(updaterUserId);
+    if (!updater || !updater.company_id) {
+      const err = new Error('Updater does not belong to a company');
+      (err as any).code = ErrorCode.FORBIDDEN;
+      throw err;
+    }
+
+    const existing = await usersRepository.findById(id, undefined, updater.company_id);
     if (!existing) {
-      const err = new Error('User not found');
+      const err = new Error('User not found in your company');
       (err as any).code = ErrorCode.USER_NOT_FOUND;
       throw err;
+    }
+
+    // Role change validation
+    if (data.role_id && data.role_id !== existing.role_id) {
+      const targetRole = await rolesRepository.findById(data.role_id);
+      if (!targetRole) {
+        const err = new Error('Invalid role specified');
+        (err as any).code = ErrorCode.VALIDATION_ERROR;
+        throw err;
+      }
+      if (targetRole.name === RoleName.SUPER_ADMIN) {
+        const err = new Error('Assigning SUPER_ADMIN role is forbidden');
+        (err as any).code = ErrorCode.CANNOT_ASSIGN_SUPER_ADMIN;
+        throw err;
+      }
+      if (targetRole.name === RoleName.COMPANY_ADMIN && updater.role_name !== RoleName.COMPANY_ADMIN) {
+        const err = new Error('Only a Company Admin can assign the Company Admin role');
+        (err as any).code = ErrorCode.PERMISSION_DENIED;
+        throw err;
+      }
+    }
+
+    if (data.office_id) {
+      const office = await officesRepository.findById(data.office_id, undefined, updater.company_id);
+      if (!office) {
+        const err = new Error('Office not found in your company');
+        (err as any).code = ErrorCode.VALIDATION_ERROR;
+        throw err;
+      }
+    }
+
+    if (data.department_id) {
+      const dept = await departmentsRepository.findById(data.department_id, undefined, updater.company_id);
+      if (!dept) {
+        const err = new Error('Department not found in your company');
+        (err as any).code = ErrorCode.VALIDATION_ERROR;
+        throw err;
+      }
     }
 
     let passwordHash: string | undefined;
@@ -170,6 +278,21 @@ export class UsersService {
     }
 
     return withTransaction(async (client) => {
+      // Sole-admin race protection if demoting a COMPANY_ADMIN
+      if (
+        existing.role_name === RoleName.COMPANY_ADMIN &&
+        data.role_id &&
+        data.role_id !== existing.role_id
+      ) {
+        await companiesRepository.lockAdmins(updater.company_id!, client);
+        const adminCount = await companiesRepository.countActiveAdmins(updater.company_id!, client);
+        if (adminCount <= 1) {
+          const err = new Error('Cannot demote the sole Company Admin. Promote another admin first.');
+          (err as any).code = ErrorCode.SOLE_ADMIN_CANNOT_LEAVE;
+          throw err;
+        }
+      }
+
       const updatedRow = await usersRepository.update(
         id,
         {
@@ -188,8 +311,17 @@ export class UsersService {
         throw new Error('Failed to update user');
       }
 
+      // If role or active status changed, increment token version to immediately invalidate stale tokens
+      if (
+        (data.role_id && data.role_id !== existing.role_id) ||
+        (data.is_active !== undefined && data.is_active !== existing.is_active)
+      ) {
+        await usersRepository.incrementTokenVersion(id, client);
+      }
+
       await auditLogsRepository.create(
         {
+          company_id: updater.company_id,
           actor_user_id: updaterUserId,
           action: data.is_active === false ? AuditAction.USER_DISABLED : AuditAction.USER_UPDATED,
           entity_type: 'user',
@@ -200,6 +332,124 @@ export class UsersService {
       );
 
       return mapRowToUser(updatedRow);
+    });
+  }
+
+  async removeUserFromCompany(adminUserId: string, targetUserId: string): Promise<void> {
+    const admin = await usersRepository.findById(adminUserId);
+    if (!admin || !admin.company_id) {
+      const err = new Error('Admin must belong to a company');
+      (err as any).code = ErrorCode.FORBIDDEN;
+      throw err;
+    }
+
+    const target = await usersRepository.findById(targetUserId, undefined, admin.company_id);
+    if (!target) {
+      const err = new Error('User not found in your company');
+      (err as any).code = ErrorCode.USER_NOT_FOUND;
+      throw err;
+    }
+
+    await withTransaction(async (client) => {
+      // Sole-admin race protection
+      await companiesRepository.lockAdmins(admin.company_id!, client);
+      if (target.role_name === RoleName.COMPANY_ADMIN) {
+        if (admin.role_name !== RoleName.COMPANY_ADMIN) {
+          const err = new Error('Only a Company Admin can remove another Company Admin');
+          (err as any).code = ErrorCode.PERMISSION_DENIED;
+          throw err;
+        }
+        const adminCount = await companiesRepository.countActiveAdmins(admin.company_id!, client);
+        if (adminCount <= 1) {
+          const err = new Error('Cannot remove the sole Company Admin. Promote another admin first.');
+          (err as any).code = ErrorCode.SOLE_ADMIN_CANNOT_LEAVE;
+          throw err;
+        }
+      }
+
+      // 1. Cancel pending leave requests
+      await leaveRequestsRepository.cancelPendingByUserId(targetUserId, client);
+
+      // 2. Auto-close any active attendance session with auto_closed=true and reason='removed'
+      await attendanceRepository.autoCloseOpenSessionsForUser(targetUserId, 'removed', client);
+
+      // 3. Delete biometric face template and clear face_enrolled
+      await faceTemplatesRepository.deleteByUserId(targetUserId, client);
+      await usersRepository.setFaceEnrolled(targetUserId, false, client);
+
+      // 4. Audit log (written with company_id explicitly before detaching user)
+      await auditLogsRepository.create(
+        {
+          company_id: admin.company_id,
+          actor_user_id: adminUserId,
+          action: AuditAction.USER_REMOVED_FROM_COMPANY,
+          entity_type: 'user',
+          entity_id: targetUserId,
+          metadata: {
+            removed_user_id: targetUserId,
+            email: target.email,
+            previous_role: target.role_name,
+          },
+        },
+        client
+      );
+
+      // 5. Detach user from company and increment token_version (revokes active session)
+      await usersRepository.detachFromCompany(targetUserId, client);
+    });
+  }
+
+  async leaveCompany(userId: string): Promise<void> {
+    const user = await usersRepository.findById(userId);
+    if (!user || !user.company_id) {
+      const err = new Error('User does not belong to any company');
+      (err as any).code = ErrorCode.USER_NOT_IN_COMPANY;
+      throw err;
+    }
+
+    const companyId = user.company_id;
+
+    await withTransaction(async (client) => {
+      // Sole-admin race protection
+      await companiesRepository.lockAdmins(companyId, client);
+      if (user.role_name === RoleName.COMPANY_ADMIN) {
+        const adminCount = await companiesRepository.countActiveAdmins(companyId, client);
+        if (adminCount <= 1) {
+          const err = new Error('The sole Company Admin cannot leave the company. Transfer ownership or promote another admin first.');
+          (err as any).code = ErrorCode.SOLE_ADMIN_CANNOT_LEAVE;
+          throw err;
+        }
+      }
+
+      // 1. Cancel pending leave requests
+      await leaveRequestsRepository.cancelPendingByUserId(userId, client);
+
+      // 2. Auto-close any active attendance session with auto_closed=true and reason='left_company'
+      await attendanceRepository.autoCloseOpenSessionsForUser(userId, 'left_company', client);
+
+      // 3. Delete biometric face template and clear face_enrolled
+      await faceTemplatesRepository.deleteByUserId(userId, client);
+      await usersRepository.setFaceEnrolled(userId, false, client);
+
+      // 4. Audit log (written with company_id explicitly before detaching user)
+      await auditLogsRepository.create(
+        {
+          company_id: companyId,
+          actor_user_id: userId,
+          action: AuditAction.USER_LEFT_COMPANY,
+          entity_type: 'user',
+          entity_id: userId,
+          metadata: {
+            user_id: userId,
+            email: user.email,
+            previous_role: user.role_name,
+          },
+        },
+        client
+      );
+
+      // 5. Detach user from company and increment token_version
+      await usersRepository.detachFromCompany(userId, client);
     });
   }
 
@@ -219,9 +469,16 @@ export class UsersService {
     modelVersion = '3.2.0',
     referenceImage?: string | null
   ): Promise<User> {
-    const user = await usersRepository.findById(userId);
+    const actor = await usersRepository.findById(actorUserId);
+    if (!actor || !actor.company_id) {
+      const err = new Error('Actor must belong to a company');
+      (err as any).code = ErrorCode.FORBIDDEN;
+      throw err;
+    }
+
+    const user = await usersRepository.findById(userId, undefined, actor.company_id);
     if (!user) {
-      const err = new Error('User not found');
+      const err = new Error('User not found in your company');
       (err as any).code = ErrorCode.USER_NOT_FOUND;
       throw err;
     }
@@ -245,6 +502,7 @@ export class UsersService {
 
       await auditLogsRepository.create(
         {
+          company_id: actor.company_id,
           actor_user_id: actorUserId,
           action: wasAlreadyEnrolled ? AuditAction.FACE_REPLACED : AuditAction.FACE_ENROLLED,
           entity_type: 'face_template',

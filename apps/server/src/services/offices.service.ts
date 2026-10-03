@@ -26,8 +26,8 @@ export class OfficesService {
     return rows.map(mapRowToOffice);
   }
 
-  async getById(id: string): Promise<Office | null> {
-    const row = await officesRepository.findById(id);
+  async getById(id: string, companyId?: string): Promise<Office | null> {
+    const row = await officesRepository.findById(id, undefined, companyId);
     return row ? mapRowToOffice(row) : null;
   }
 
@@ -87,10 +87,11 @@ export class OfficesService {
       radius_meters?: number;
       is_active?: boolean;
       apply_to_all_employees?: boolean;
-    }
+    },
+    companyId?: string
   ): Promise<Office> {
     return withTransaction(async (client) => {
-      const officeRow = await officesRepository.update(id, data, client);
+      const officeRow = await officesRepository.update(id, data, client, companyId);
       if (!officeRow) {
         const err = new Error('Office not found');
         (err as any).code = ErrorCode.VALIDATION_ERROR;
@@ -108,6 +109,7 @@ export class OfficesService {
 
       await auditLogsRepository.create(
         {
+          company_id: officeRow.company_id,
           actor_user_id: actorUserId,
           action: data.is_active === false ? AuditAction.OFFICE_DISABLED : AuditAction.OFFICE_UPDATED,
           entity_type: 'office',
@@ -121,7 +123,7 @@ export class OfficesService {
         client
       );
 
-      const refreshed = await officesRepository.findById(id, client);
+      const refreshed = await officesRepository.findById(id, client, companyId);
       return mapRowToOffice(refreshed || officeRow);
     });
   }
@@ -132,7 +134,7 @@ export class OfficesService {
     officeId: string
   ): Promise<{ affectedEmployees: number }> {
     return withTransaction(async (client) => {
-      const office = await officesRepository.findById(officeId, client);
+      const office = await officesRepository.findById(officeId, client, companyId);
       if (!office) {
         const err = new Error('Office not found');
         (err as any).code = ErrorCode.VALIDATION_ERROR;
@@ -147,6 +149,7 @@ export class OfficesService {
 
       await auditLogsRepository.create(
         {
+          company_id: companyId,
           actor_user_id: actorUserId,
           action: AuditAction.USER_UPDATED,
           entity_type: 'office',
@@ -164,9 +167,9 @@ export class OfficesService {
     });
   }
 
-  async delete(actorUserId: string, id: string): Promise<boolean> {
+  async delete(actorUserId: string, id: string, companyId?: string): Promise<boolean> {
     return withTransaction(async (client) => {
-      const office = await officesRepository.findById(id, client);
+      const office = await officesRepository.findById(id, client, companyId);
       if (!office) {
         const err = new Error('Office not found');
         (err as any).statusCode = 404;
@@ -185,10 +188,11 @@ export class OfficesService {
       await client.query(`DELETE FROM attendance_sessions WHERE office_id = $1`, [id]);
       await client.query(`DELETE FROM holidays WHERE office_id = $1`, [id]);
 
-      const deleted = await officesRepository.delete(id, client);
+      const deleted = await officesRepository.delete(id, client, companyId);
 
       await auditLogsRepository.create(
         {
+          company_id: office.company_id,
           actor_user_id: actorUserId,
           action: AuditAction.OFFICE_DELETED,
           entity_type: 'office',

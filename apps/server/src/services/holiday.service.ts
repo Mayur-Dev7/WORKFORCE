@@ -11,8 +11,9 @@ import { holidaysRepository, HolidayRow } from '../repositories/holidays.reposit
 import { weeklyHolidayRulesRepository, WeeklyHolidayRuleRow } from '../repositories/weeklyHolidayRules.repository.js';
 import { auditLogsRepository } from '../repositories/auditLogs.repository.js';
 import { withTransaction } from '../lib/db.js';
+import { officesRepository } from '../repositories/offices.repository.js';
 import { countWorkingDays } from '../lib/calendar/holidayResolver.js';
-import { AuditAction } from '@workforce/shared';
+import { AuditAction, ErrorCode } from '@workforce/shared';
 import type { Holiday, WeeklyHolidayRule } from '@workforce/shared';
 
 export class HolidayService {
@@ -40,12 +41,22 @@ export class HolidayService {
       is_recurring?: boolean;
     }
   ): Promise<HolidayRow> {
+    if (data.office_id) {
+      const office = await officesRepository.findById(data.office_id, undefined, companyId);
+      if (!office) {
+        const err = new Error('Office not found in your company');
+        (err as any).code = ErrorCode.VALIDATION_ERROR;
+        throw err;
+      }
+    }
+
     return withTransaction(async (client) => {
       const holiday = await holidaysRepository.create(
         { company_id: companyId, ...data },
         client
       );
       await auditLogsRepository.create({
+        company_id: companyId,
         actor_user_id: actorUserId,
         action: AuditAction.HOLIDAY_CREATED,
         entity_type: 'holiday',
@@ -59,12 +70,23 @@ export class HolidayService {
   async updateHoliday(
     actorUserId: string,
     id: string,
-    data: Partial<{ name: string; description: string | null; holiday_date: string; is_recurring: boolean; is_active: boolean }>
+    data: Partial<{ office_id?: string | null; name: string; description: string | null; holiday_date: string; is_recurring: boolean; is_active: boolean }>,
+    companyId?: string
   ): Promise<HolidayRow | null> {
+    if (data.office_id && companyId) {
+      const office = await officesRepository.findById(data.office_id, undefined, companyId);
+      if (!office) {
+        const err = new Error('Office not found in your company');
+        (err as any).code = ErrorCode.VALIDATION_ERROR;
+        throw err;
+      }
+    }
+
     return withTransaction(async (client) => {
-      const holiday = await holidaysRepository.update(id, data, client);
+      const holiday = await holidaysRepository.update(id, data, client, companyId);
       if (!holiday) return null;
       await auditLogsRepository.create({
+        company_id: companyId || holiday.company_id,
         actor_user_id: actorUserId,
         action: AuditAction.HOLIDAY_UPDATED,
         entity_type: 'holiday',
@@ -75,11 +97,12 @@ export class HolidayService {
     });
   }
 
-  async deleteHoliday(actorUserId: string, id: string): Promise<boolean> {
+  async deleteHoliday(actorUserId: string, id: string, companyId?: string): Promise<boolean> {
     return withTransaction(async (client) => {
-      const deleted = await holidaysRepository.deleteById(id, client);
+      const deleted = await holidaysRepository.deleteById(id, client, companyId);
       if (deleted) {
         await auditLogsRepository.create({
+          company_id: companyId,
           actor_user_id: actorUserId,
           action: AuditAction.HOLIDAY_DELETED,
           entity_type: 'holiday',

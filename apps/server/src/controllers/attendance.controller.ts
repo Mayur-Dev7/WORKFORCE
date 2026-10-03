@@ -51,7 +51,7 @@ export class AttendanceController {
     try {
       const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
       const month = req.query.month as string | undefined;
-      const history = await attendanceService.getUserHistory(req.user!.userId, limit, month);
+      const history = await attendanceService.getUserHistory(req.user!.userId, limit, month, req.user?.companyId || undefined);
       res.status(200).json({
         success: true,
         data: history,
@@ -63,11 +63,12 @@ export class AttendanceController {
 
   async getTeamAttendance(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const companyId = req.user!.companyId!;
       const officeId = req.query.officeId as string | undefined;
       const departmentId = req.query.departmentId as string | undefined;
       const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
 
-      const sessions = await attendanceService.getTeamAttendance(officeId, departmentId, limit);
+      const sessions = await attendanceService.getTeamAttendance(companyId, officeId, departmentId, limit);
       res.status(200).json({
         success: true,
         data: sessions,

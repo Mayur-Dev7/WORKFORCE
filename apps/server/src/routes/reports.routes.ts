@@ -10,5 +10,6 @@ router.use(requireAuth());
 router.get('/attendance', requirePermission(PermissionKey.REPORTS_READ), reportsController.getAttendanceReport);
 router.get('/attendance/export', requirePermission(PermissionKey.REPORTS_EXPORT), reportsController.exportAttendanceReport);
 router.get('/stats', requirePermission(PermissionKey.REPORTS_READ), reportsController.getAdminStats);
+router.get('/admin-stats', requirePermission(PermissionKey.REPORTS_READ), reportsController.getAdminStats);
 
 export default router;

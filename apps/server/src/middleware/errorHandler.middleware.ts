@@ -26,7 +26,7 @@ export function errorHandler(
 
   // Check custom business error code
   const code = err.code || ErrorCode.INTERNAL_SERVER_ERROR;
-  let status = 500;
+  let status = err.statusCode || 500;
 
   switch (code) {
     case ErrorCode.INVALID_CREDENTIALS:
@@ -34,15 +34,28 @@ export function errorHandler(
       status = 401;
       break;
     case ErrorCode.PERMISSION_DENIED:
+    case ErrorCode.FORBIDDEN:
     case ErrorCode.ACCOUNT_DISABLED:
     case ErrorCode.AUTH_METHOD_MISMATCH:
     case ErrorCode.ACCOUNT_NOT_PROVISIONED:
+    case ErrorCode.SOLE_ADMIN_CANNOT_LEAVE:
+    case ErrorCode.CANNOT_LEAVE_SOLE_ADMIN:
+    case ErrorCode.CANNOT_ASSIGN_SUPER_ADMIN:
+    case ErrorCode.CANNOT_REMOVE_SOLE_ADMIN:
+    case ErrorCode.CANNOT_REMOVE_SELF:
+    case ErrorCode.USER_NOT_IN_COMPANY:
+    case ErrorCode.CROSS_TENANT_FORBIDDEN:
       status = 403;
+      break;
+    case ErrorCode.USER_ALREADY_IN_COMPANY:
+    case ErrorCode.ACCOUNT_IDENTITY_MISMATCH:
+      status = 409;
       break;
     case ErrorCode.AUTH_METHOD_DEPRECATED:
       status = 410;
       break;
     case ErrorCode.USER_NOT_FOUND:
+    case ErrorCode.INVITATION_NOT_FOUND:
       status = 404;
       break;
     case ErrorCode.FACE_NOT_ENROLLED:

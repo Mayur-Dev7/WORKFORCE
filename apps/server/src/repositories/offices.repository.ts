@@ -40,9 +40,9 @@ export class OfficesRepository {
     return res.rows;
   }
 
-  async findById(id: string, client?: PoolClient): Promise<OfficeRow | null> {
+  async findById(id: string, client?: PoolClient, companyId?: string): Promise<OfficeRow | null> {
     const queryClient = client || pool;
-    const query = `
+    let query = `
       SELECT 
         o.id,
         o.company_id,
@@ -58,9 +58,14 @@ export class OfficesRepository {
       FROM offices o
       LEFT JOIN users u ON o.id = u.office_id
       WHERE o.id = $1
-      GROUP BY o.id
     `;
-    const res = await queryClient.query<OfficeRow>(query, [id]);
+    const params: unknown[] = [id];
+    if (companyId) {
+      query += ` AND o.company_id = $2`;
+      params.push(companyId);
+    }
+    query += ` GROUP BY o.id`;
+    const res = await queryClient.query<OfficeRow>(query, params);
     return res.rows[0] || null;
   }
 
@@ -104,7 +109,8 @@ export class OfficesRepository {
       radius_meters?: number;
       is_active?: boolean;
     },
-    client?: PoolClient
+    client?: PoolClient,
+    companyId?: string
   ): Promise<OfficeRow | null> {
     const queryClient = client || pool;
     const sets: string[] = ['updated_at = NOW()'];
@@ -136,19 +142,31 @@ export class OfficesRepository {
       values.push(updates.is_active);
     }
 
+    let whereClause = `WHERE id = $1`;
+    if (companyId) {
+      whereClause += ` AND company_id = $${idx++}`;
+      values.push(companyId);
+    }
+
     const query = `
       UPDATE offices
       SET ${sets.join(', ')}
-      WHERE id = $1
+      ${whereClause}
       RETURNING *
     `;
     const res = await queryClient.query<OfficeRow>(query, values);
     return res.rows[0] || null;
   }
 
-  async delete(id: string, client?: PoolClient): Promise<boolean> {
+  async delete(id: string, client?: PoolClient, companyId?: string): Promise<boolean> {
     const queryClient = client || pool;
-    const res = await queryClient.query(`DELETE FROM offices WHERE id = $1`, [id]);
+    let query = `DELETE FROM offices WHERE id = $1`;
+    const params: unknown[] = [id];
+    if (companyId) {
+      query += ` AND company_id = $2`;
+      params.push(companyId);
+    }
+    const res = await queryClient.query(query, params);
     return (res.rowCount ?? 0) > 0;
   }
 }

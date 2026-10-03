@@ -19,11 +19,14 @@ export class LeaveTypesRepository {
     return res.rows;
   }
 
-  async findById(id: string): Promise<LeaveTypeRow | null> {
-    const res = await this.db.query<LeaveTypeRow>(
-      `SELECT * FROM leave_types WHERE id = $1`,
-      [id]
-    );
+  async findById(id: string, companyId?: string): Promise<LeaveTypeRow | null> {
+    let query = `SELECT * FROM leave_types WHERE id = $1`;
+    const params: unknown[] = [id];
+    if (companyId) {
+      query += ` AND company_id = $2`;
+      params.push(companyId);
+    }
+    const res = await this.db.query<LeaveTypeRow>(query, params);
     return res.rows[0] ?? null;
   }
 
@@ -58,7 +61,8 @@ export class LeaveTypesRepository {
   async update(
     id: string,
     data: Partial<{ name: string; annual_quota: number; is_paid: boolean; is_active: boolean }>,
-    client?: PoolClient
+    client?: PoolClient,
+    companyId?: string
   ): Promise<LeaveTypeRow | null> {
     const db = client ?? this.db;
     const setClauses: string[] = [];
@@ -70,13 +74,19 @@ export class LeaveTypesRepository {
     if (data.is_paid !== undefined) { setClauses.push(`is_paid = $${idx++}`); values.push(data.is_paid); }
     if (data.is_active !== undefined) { setClauses.push(`is_active = $${idx++}`); values.push(data.is_active); }
 
-    if (setClauses.length === 0) return this.findById(id);
+    if (setClauses.length === 0) return this.findById(id, companyId);
 
     setClauses.push(`updated_at = NOW()`);
     values.push(id);
 
+    let whereClause = `WHERE id = $${idx++}`;
+    if (companyId) {
+      whereClause += ` AND company_id = $${idx++}`;
+      values.push(companyId);
+    }
+
     const res = await db.query<LeaveTypeRow>(
-      `UPDATE leave_types SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *`,
+      `UPDATE leave_types SET ${setClauses.join(', ')} ${whereClause} RETURNING *`,
       values
     );
     return res.rows[0] ?? null;

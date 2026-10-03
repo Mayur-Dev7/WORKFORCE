@@ -6,7 +6,7 @@ import { ErrorCode } from '@workforce/shared';
 export class DepartmentsController {
   async getAll(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const departments = await departmentsService.getAll(req.user?.companyId);
+      const departments = await departmentsService.getAll(req.user?.companyId || undefined);
       res.status(200).json({
         success: true,
         data: departments,
@@ -19,6 +19,13 @@ export class DepartmentsController {
   async create(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const validated = CreateDepartmentSchema.parse(req.body);
+      if (req.user?.companyId && validated.company_id !== req.user.companyId) {
+        res.status(403).json({
+          success: false,
+          error: { code: ErrorCode.CROSS_TENANT_FORBIDDEN, message: 'Cannot create departments in another company' },
+        });
+        return;
+      }
       const department = await departmentsService.create(validated);
       res.status(201).json({
         success: true,
@@ -32,7 +39,7 @@ export class DepartmentsController {
   async update(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const validated = UpdateDepartmentSchema.parse(req.body);
-      const updated = await departmentsService.update(req.params.id, validated.name);
+      const updated = await departmentsService.update(req.params.id, validated.name, req.user?.companyId || undefined);
       if (!updated) {
         res.status(404).json({
           success: false,

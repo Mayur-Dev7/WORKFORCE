@@ -7,6 +7,7 @@ export class AuditController {
     try {
       const { action, entityType, actorUserId, limit, offset } = req.query;
       const result = await auditService.getAuditLogs({
+        companyId: req.user?.companyId || undefined,
         action: action as string | undefined,
         entityType: entityType as string | undefined,
         actorUserId: actorUserId as string | undefined,
@@ -27,7 +28,7 @@ export class AuditController {
   async getLoginAttempts(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
-      const attempts = await loginAttemptsRepository.findAll(limit);
+      const attempts = await loginAttemptsRepository.findAll(limit, req.user?.companyId || undefined);
       res.status(200).json({
         success: true,
         data: attempts,

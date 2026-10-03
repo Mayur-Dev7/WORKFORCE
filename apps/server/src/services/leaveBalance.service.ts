@@ -30,9 +30,10 @@ export class LeaveBalanceService {
 
   async updateLeaveType(
     id: string,
-    data: Partial<{ name: string; annual_quota: number; is_paid: boolean; is_active: boolean }>
+    data: Partial<{ name: string; annual_quota: number; is_paid: boolean; is_active: boolean }>,
+    companyId?: string
   ): Promise<LeaveTypeRow | null> {
-    return leaveTypesRepository.update(id, data);
+    return leaveTypesRepository.update(id, data, undefined, companyId);
   }
 
   // ─── Balance reads ────────────────────────────────────────────────────────

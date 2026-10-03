@@ -20,6 +20,7 @@ import {
 function mapSessionRowToSession(row: AttendanceSessionRow): AttendanceSession {
   return {
     id: row.id,
+    company_id: row.company_id,
     user_id: row.user_id,
     office_id: row.office_id,
     check_in_at: row.check_in_at.toISOString(),
@@ -36,6 +37,8 @@ function mapSessionRowToSession(row: AttendanceSessionRow): AttendanceSession {
     check_out_distance_meters: row.check_out_distance_meters,
     check_out_face_similarity: row.check_out_face_similarity,
     check_out_liveness_score: row.check_out_liveness_score,
+    auto_closed: row.auto_closed,
+    auto_close_reason: row.auto_close_reason,
     created_at: row.created_at.toISOString(),
     user_name: row.user_name,
     employee_code: row.employee_code,
@@ -135,8 +138,14 @@ export class AttendanceService {
       throw err;
     }
 
-    // 6. Office & Geofence validation
-    const office = await officesRepository.findById(user.office_id);
+    if (!user.company_id || !user.office_id) {
+      const err = new Error('User is not associated with an active company or office');
+      (err as any).code = ErrorCode.FORBIDDEN;
+      throw err;
+    }
+
+    // 6. Office & Geofence validation (strictly scoped to user company)
+    const office = await officesRepository.findById(user.office_id, undefined, user.company_id);
     if (!office || !office.is_active) {
       const err = new Error('Assigned office is inactive or unavailable');
       (err as any).code = ErrorCode.OUTSIDE_GEOFENCE;
@@ -153,6 +162,7 @@ export class AttendanceService {
 
     if (!geoResult.insideGeofence) {
       await loginAttemptsRepository.create({
+        company_id: user.company_id,
         user_id: user.id,
         event_type: LoginEventType.FAILED_GEOFENCE,
         failure_reason: `Distance ${geoResult.distanceMeters}m exceeds radius ${geoResult.allowedRadiusMeters}m`,
@@ -183,8 +193,9 @@ export class AttendanceService {
 
       const newSession = await attendanceRepository.createCheckIn(
         {
+          company_id: user.company_id!,
           user_id: user.id,
-          office_id: user.office_id,
+          office_id: user.office_id!,
           check_in_latitude: req.latitude,
           check_in_longitude: req.longitude,
           check_in_accuracy_meters: req.accuracy,
@@ -198,6 +209,7 @@ export class AttendanceService {
       // Audit log
       await auditLogsRepository.create(
         {
+          company_id: user.company_id,
           actor_user_id: user.id,
           action: AuditAction.ATTENDANCE_CHECKED_IN,
           entity_type: 'attendance_session',
@@ -266,10 +278,16 @@ export class AttendanceService {
       throw err;
     }
 
-    // 5. Office & Geofence
-    const office = await officesRepository.findById(user.office_id);
-    if (!office) {
-      const err = new Error('Office not found');
+    // 5. Office & Geofence (strictly scoped to user company)
+    if (!user.company_id || !user.office_id) {
+      const err = new Error('User is not associated with an active company or office');
+      (err as any).code = ErrorCode.FORBIDDEN;
+      throw err;
+    }
+
+    const office = await officesRepository.findById(user.office_id, undefined, user.company_id);
+    if (!office || !office.is_active) {
+      const err = new Error('Office not found or inactive');
       (err as any).code = ErrorCode.OUTSIDE_GEOFENCE;
       throw err;
     }
@@ -315,6 +333,7 @@ export class AttendanceService {
 
       await auditLogsRepository.create(
         {
+          company_id: user.company_id,
           actor_user_id: user.id,
           action: AuditAction.ATTENDANCE_CHECKED_OUT,
           entity_type: 'attendance_session',
@@ -338,13 +357,13 @@ export class AttendanceService {
     return row ? mapSessionRowToSession(row) : null;
   }
 
-  async getUserHistory(userId: string, limit = 50, month?: string): Promise<AttendanceSession[]> {
-    const rows = await attendanceRepository.getUserHistory(userId, limit, month);
+  async getUserHistory(userId: string, limit = 50, month?: string, companyId?: string): Promise<AttendanceSession[]> {
+    const rows = await attendanceRepository.getUserHistory(userId, limit, month, companyId);
     return rows.map(mapSessionRowToSession);
   }
 
-  async getTeamAttendance(officeId?: string, departmentId?: string, limit = 100): Promise<AttendanceSession[]> {
-    const rows = await attendanceRepository.getTeamAttendance(officeId, departmentId, limit);
+  async getTeamAttendance(companyId: string, officeId?: string, departmentId?: string, limit = 100): Promise<AttendanceSession[]> {
+    const rows = await attendanceRepository.getTeamAttendance(companyId, officeId, departmentId, limit);
     return rows.map(mapSessionRowToSession);
   }
 }

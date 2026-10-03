@@ -28,9 +28,9 @@ export class DepartmentsRepository {
     return res.rows;
   }
 
-  async findById(id: string, client?: PoolClient): Promise<DepartmentRow | null> {
+  async findById(id: string, client?: PoolClient, companyId?: string): Promise<DepartmentRow | null> {
     const queryClient = client || pool;
-    const query = `
+    let query = `
       SELECT 
         d.id,
         d.company_id,
@@ -40,9 +40,14 @@ export class DepartmentsRepository {
       FROM departments d
       LEFT JOIN users u ON d.id = u.department_id
       WHERE d.id = $1
-      GROUP BY d.id
     `;
-    const res = await queryClient.query<DepartmentRow>(query, [id]);
+    const params: unknown[] = [id];
+    if (companyId) {
+      query += ` AND d.company_id = $2`;
+      params.push(companyId);
+    }
+    query += ` GROUP BY d.id`;
+    const res = await queryClient.query<DepartmentRow>(query, params);
     return res.rows[0] || null;
   }
 
@@ -65,18 +70,22 @@ export class DepartmentsRepository {
   async update(
     id: string,
     updates: { name: string },
-    client?: PoolClient
+    client?: PoolClient,
+    companyId?: string
   ): Promise<DepartmentRow | null> {
     const queryClient = client || pool;
-    const res = await queryClient.query<DepartmentRow>(
-      `
-        UPDATE departments
-        SET name = $2
-        WHERE id = $1
-        RETURNING *
-      `,
-      [id, updates.name]
-    );
+    let query = `
+      UPDATE departments
+      SET name = $2
+      WHERE id = $1
+    `;
+    const params: unknown[] = [id, updates.name];
+    if (companyId) {
+      query += ` AND company_id = $3`;
+      params.push(companyId);
+    }
+    query += ` RETURNING *`;
+    const res = await queryClient.query<DepartmentRow>(query, params);
     return res.rows[0] || null;
   }
 }

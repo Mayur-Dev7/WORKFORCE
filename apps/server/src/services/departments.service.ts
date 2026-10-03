@@ -27,8 +27,8 @@ export class DepartmentsService {
     return mapRowToDepartment(row);
   }
 
-  async update(id: string, name: string): Promise<Department | null> {
-    const row = await departmentsRepository.update(id, { name });
+  async update(id: string, name: string, companyId?: string): Promise<Department | null> {
+    const row = await departmentsRepository.update(id, { name }, undefined, companyId);
     return row ? mapRowToDepartment(row) : null;
   }
 }
