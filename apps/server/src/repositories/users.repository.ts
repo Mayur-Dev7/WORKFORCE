@@ -4,16 +4,18 @@ import { User } from '@workforce/shared';
 
 export interface UserRow {
   id: string;
-  company_id: string;
-  office_id: string;
+  company_id: string | null;
+  office_id: string | null;
   department_id: string | null;
-  role_id: string;
-  employee_code: string;
+  role_id: string | null;
+  employee_code: string | null;
   name: string;
   email: string;
   password_hash: string | null;
   is_active: boolean;
   face_enrolled: boolean;
+  token_version: number;
+  approved_for_firebase_link: boolean;
   created_at: Date;
   updated_at: Date;
   last_login_at: Date | null;
@@ -41,6 +43,8 @@ export class UsersRepository {
       u.password_hash,
       u.is_active,
       u.face_enrolled,
+      u.token_version,
+      u.approved_for_firebase_link,
       u.firebase_uid,
       u.auth_provider,
       u.firebase_linked_at,
@@ -56,22 +60,27 @@ export class UsersRepository {
         '{}'
       ) as permissions
     FROM users u
-    JOIN companies c ON u.company_id = c.id
-    JOIN offices o ON u.office_id = o.id
+    LEFT JOIN companies c ON u.company_id = c.id
+    LEFT JOIN offices o ON u.office_id = o.id
     LEFT JOIN departments d ON u.department_id = d.id
-    JOIN roles r ON u.role_id = r.id
+    LEFT JOIN roles r ON u.role_id = r.id
     LEFT JOIN role_permissions rp ON r.id = rp.role_id
     LEFT JOIN permissions p ON rp.permission_id = p.id
   `;
 
-  async findById(id: string, client?: PoolClient): Promise<UserRow | null> {
+  async findById(id: string, client?: PoolClient, companyId?: string): Promise<UserRow | null> {
     const queryClient = client || pool;
-    const query = `
+    let query = `
       ${this.baseSelect}
       WHERE u.id = $1
-      GROUP BY u.id, c.name, o.name, d.name, r.name
     `;
-    const res = await queryClient.query<UserRow>(query, [id]);
+    const params: unknown[] = [id];
+    if (companyId) {
+      query += ` AND u.company_id = $2`;
+      params.push(companyId);
+    }
+    query += ` GROUP BY u.id, c.name, o.name, d.name, r.name`;
+    const res = await queryClient.query<UserRow>(query, params);
     return res.rows[0] || null;
   }
 
@@ -349,6 +358,134 @@ export class UsersRepository {
     `;
     const res = await queryClient.query(query, [officeId, companyId]);
     return res.rowCount ?? 0;
+  }
+
+  async getAuthTokenContext(userId: string): Promise<{
+    id: string;
+    email: string;
+    is_active: boolean;
+    token_version: number;
+    company_id: string | null;
+    role_name: string | null;
+    permissions: string[];
+  } | null> {
+    const query = `
+      SELECT 
+        u.id,
+        u.email,
+        u.is_active,
+        u.token_version,
+        u.company_id,
+        r.name as role_name,
+        COALESCE(
+          array_agg(p.key) FILTER (WHERE p.key IS NOT NULL),
+          '{}'
+        ) as permissions
+      FROM users u
+      LEFT JOIN roles r ON u.role_id = r.id
+      LEFT JOIN role_permissions rp ON r.id = rp.role_id
+      LEFT JOIN permissions p ON rp.permission_id = p.id
+      WHERE u.id = $1
+      GROUP BY u.id, r.name
+    `;
+    const res = await pool.query(query, [userId]);
+    return res.rows[0] || null;
+  }
+
+  async incrementTokenVersion(userId: string, client?: PoolClient): Promise<number> {
+    const queryClient = client || pool;
+    const res = await queryClient.query<{ token_version: number }>(
+      `UPDATE users
+       SET token_version = token_version + 1, updated_at = NOW()
+       WHERE id = $1
+       RETURNING token_version`,
+      [userId]
+    );
+    return res.rows[0]?.token_version ?? 1;
+  }
+
+  async createOnboardingUser(
+    data: {
+      name: string;
+      email: string;
+      firebase_uid: string;
+    },
+    client?: PoolClient
+  ): Promise<UserRow> {
+    const queryClient = client || pool;
+    const insertQuery = `
+      INSERT INTO users (
+        name, email, firebase_uid, auth_provider,
+        firebase_linked_at, is_active, token_version
+      )
+      VALUES ($1, $2, $3, 'firebase', NOW(), true, 1)
+      RETURNING id
+    `;
+    const res = await queryClient.query<{ id: string }>(insertQuery, [
+      data.name,
+      data.email.trim().toLowerCase(),
+      data.firebase_uid,
+    ]);
+
+    const created = await this.findById(res.rows[0].id, client);
+    if (!created) {
+      throw new Error('Failed to retrieve newly created onboarding user');
+    }
+    return created;
+  }
+
+  async detachFromCompany(userId: string, client?: PoolClient): Promise<void> {
+    const queryClient = client || pool;
+    await queryClient.query(
+      `UPDATE users
+       SET company_id = NULL,
+           office_id = NULL,
+           department_id = NULL,
+           role_id = NULL,
+           employee_code = NULL,
+           token_version = token_version + 1,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [userId]
+    );
+  }
+
+  async assignToCompany(
+    userId: string,
+    data: {
+      company_id: string;
+      office_id: string;
+      role_id: string;
+      department_id?: string | null;
+      employee_code: string;
+    },
+    client?: PoolClient
+  ): Promise<UserRow> {
+    const queryClient = client || pool;
+    await queryClient.query(
+      `UPDATE users
+       SET company_id = $2,
+           office_id = $3,
+           role_id = $4,
+           department_id = $5,
+           employee_code = $6,
+           token_version = token_version + 1,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [
+        userId,
+        data.company_id,
+        data.office_id,
+        data.role_id,
+        data.department_id || null,
+        data.employee_code,
+      ]
+    );
+    const updated = await this.findById(userId, client);
+    if (!updated) {
+      throw new Error('Failed to retrieve assigned user');
+    }
+    return updated;
   }
 }
 

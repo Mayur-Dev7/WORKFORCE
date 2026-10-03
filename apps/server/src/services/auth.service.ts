@@ -10,9 +10,10 @@ import { UserRow } from '../repositories/users.repository.js';
 export interface TokenPayload {
   userId: string;
   email: string;
-  roleName: RoleName;
-  companyId: string;
+  roleName: RoleName | null;
+  companyId: string | null;
   permissions: PermissionKey[];
+  tokenVersion: number;
 }
 
 export interface LoginResult {
@@ -72,9 +73,10 @@ export class AuthService {
     const tokenPayload: TokenPayload = {
       userId: userRow.id,
       email: userRow.email,
-      roleName: userRow.role_name as RoleName,
-      companyId: userRow.company_id,
+      roleName: (userRow.role_name as RoleName) || null,
+      companyId: userRow.company_id || null,
       permissions: (userRow.permissions || []) as PermissionKey[],
+      tokenVersion: userRow.token_version ?? 1,
     };
 
     const tokens = this.generateTokens(tokenPayload);
@@ -224,9 +226,10 @@ export class AuthService {
       const tokenPayload: TokenPayload = {
         userId: userRow.id,
         email: userRow.email,
-        roleName: userRow.role_name as RoleName,
-        companyId: userRow.company_id,
+        roleName: (userRow.role_name as RoleName) || null,
+        companyId: userRow.company_id || null,
         permissions: (userRow.permissions || []) as PermissionKey[],
+        tokenVersion: userRow.token_version ?? 1,
       };
 
       const accessToken = jwt.sign(tokenPayload, this.accessSecret, {

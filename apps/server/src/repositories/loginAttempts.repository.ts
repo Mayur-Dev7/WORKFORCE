@@ -4,6 +4,7 @@ import { LoginEventType } from '@workforce/shared';
 
 export interface LoginAttemptRow {
   id: string;
+  company_id?: string | null;
   user_id: string | null;
   event_type: LoginEventType;
   failure_reason: string | null;
@@ -19,6 +20,7 @@ export interface LoginAttemptRow {
 export class LoginAttemptsRepository {
   async create(
     attempt: {
+      company_id?: string | null;
       user_id?: string | null;
       event_type: LoginEventType;
       failure_reason?: string | null;
@@ -33,13 +35,14 @@ export class LoginAttemptsRepository {
     const queryClient = client || pool;
     const query = `
       INSERT INTO login_attempts (
-        user_id, event_type, failure_reason, ip_address, user_agent,
+        company_id, user_id, event_type, failure_reason, ip_address, user_agent,
         latitude, longitude, distance_meters
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `;
     const res = await queryClient.query<LoginAttemptRow>(query, [
+      attempt.company_id || null,
       attempt.user_id || null,
       attempt.event_type,
       attempt.failure_reason || null,
@@ -52,10 +55,11 @@ export class LoginAttemptsRepository {
     return res.rows[0];
   }
 
-  async findAll(limit = 100): Promise<LoginAttemptRow[]> {
-    const query = `
+  async findAll(limit = 100, companyId?: string): Promise<LoginAttemptRow[]> {
+    let query = `
       SELECT 
         l.id,
+        l.company_id,
         l.user_id,
         l.event_type,
         l.failure_reason,
@@ -68,10 +72,16 @@ export class LoginAttemptsRepository {
         u.employee_code
       FROM login_attempts l
       LEFT JOIN users u ON l.user_id = u.id
-      ORDER BY l.created_at DESC
-      LIMIT $1
     `;
-    const res = await pool.query<LoginAttemptRow>(query, [limit]);
+    const params: unknown[] = [];
+    if (companyId) {
+      query += ` WHERE l.company_id = $1`;
+      params.push(companyId);
+    }
+    params.push(limit);
+    query += ` ORDER BY l.created_at DESC LIMIT $${params.length}`;
+
+    const res = await pool.query<LoginAttemptRow>(query, params);
     return res.rows;
   }
 }

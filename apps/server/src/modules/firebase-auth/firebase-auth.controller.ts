@@ -4,10 +4,10 @@ import { usersRepository, UserRow } from '../../repositories/users.repository.js
 import { authService } from '../../services/auth.service.js';
 import { loginAttemptsRepository } from '../../repositories/loginAttempts.repository.js';
 import { auditLogsRepository } from '../../repositories/auditLogs.repository.js';
-import { systemSettingsRepository } from '../../repositories/systemSettings.repository.js';
-import { getBootstrapConfig } from './bootstrap.config.js';
+import { invitationsRepository } from '../../repositories/invitations.repository.js';
+import { officesRepository } from '../../repositories/offices.repository.js';
 import { withTransaction } from '../../lib/db.js';
-import { ErrorCode, LoginEventType, AuditAction } from '@workforce/shared';
+import { ErrorCode, LoginEventType, AuditAction, RoleName } from '@workforce/shared';
 import { z } from 'zod';
 
 const FirebaseSessionSchema = z.object({
@@ -18,8 +18,6 @@ const ResolveIdentifierSchema = z.object({
   identifier: z.string().min(1, 'Identifier is required'),
 });
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 export class FirebaseAuthController {
   async session(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -29,7 +27,6 @@ export class FirebaseAuthController {
       // 0. Token verification
       let decodedToken;
       try {
-        // Verify with checkRevoked = true
         decodedToken = await auth.verifyIdToken(idToken, true);
       } catch (verifyErr: any) {
         res.status(401).json({
@@ -61,11 +58,12 @@ export class FirebaseAuthController {
       // Normalize email with trim + lowercase only (no dot/plus stripping)
       const firebaseEmail = rawEmail.trim().toLowerCase();
 
-      // 1. Branch A — Existing Firebase-linked user
+      // 1. Branch A — Existing Firebase-linked user (supports any configured Firebase provider)
       const linkedUser = await usersRepository.findByFirebaseUid(firebaseUid);
       if (linkedUser) {
         if (!linkedUser.is_active) {
           await loginAttemptsRepository.create({
+            company_id: linkedUser.company_id || undefined,
             user_id: linkedUser.id,
             event_type: LoginEventType.DISABLED_ACCOUNT,
             failure_reason: 'Account is deactivated in PostgreSQL',
@@ -84,6 +82,7 @@ export class FirebaseAuthController {
 
         if (linkedUser.email.trim().toLowerCase() !== firebaseEmail) {
           await loginAttemptsRepository.create({
+            company_id: linkedUser.company_id || undefined,
             user_id: linkedUser.id,
             event_type: LoginEventType.UNKNOWN_EMPLOYEE,
             failure_reason: 'Email mismatch between verified Firebase token and user account',
@@ -104,209 +103,25 @@ export class FirebaseAuthController {
         return;
       }
 
-      /**
-       * CONTROLLED EXCEPTION:
-       * firebase_uid is the authoritative runtime identity key.
-       * Matching by verified email is a strictly controlled exception permitted ONLY for:
-       * (1) Branch C: First-Admin Bootstrap (when system_settings.bootstrap.completed = false), and
-       * (2) Branch B: First-Login Linking of exactly one pre-provisioned employee row.
-       * In no circumstances is an arbitrary user created or granted Super Admin status.
-       */
-
-      // 2. Branch C — First-admin bootstrap (evaluated BEFORE Branch B)
-      const { adminEmail: bootstrapAdminEmail, companyId: bootstrapCompanyId } = getBootstrapConfig();
-
-      if (bootstrapAdminEmail && firebaseEmail === bootstrapAdminEmail) {
-        if (!bootstrapCompanyId || !UUID_REGEX.test(bootstrapCompanyId)) {
-          console.error('❌ [BOOTSTRAP ERROR] BOOTSTRAP_ADMIN_EMAIL matched but BOOTSTRAP_COMPANY_ID is missing or invalid.');
-          res.status(500).json({
-            success: false,
-            error: {
-              code: ErrorCode.INTERNAL_SERVER_ERROR,
-              message: 'First-admin bootstrap configuration error: BOOTSTRAP_COMPANY_ID is missing or invalid.',
-            },
-          });
-          return;
-        }
-
-        // Only Google OAuth is permitted for bootstrap
-        if (signInProvider === 'google.com') {
-          // Cheap pre-check
-          const preCheck = await systemSettingsRepository.getBootstrapSetting();
-          if (!preCheck.completed) {
-            let bootstrapUser: UserRow | null = null;
-            let bootstrapError: string | null = null;
-
-            try {
-              bootstrapUser = await withTransaction(async (client) => {
-                // a. SELECT pg_advisory_xact_lock(74829103);
-                await client.query('SELECT pg_advisory_xact_lock(74829103)');
-
-                // b. Re-read bootstrap.completed inside the transaction
-                const settingRes = await client.query<{ value: { completed: boolean; completed_at: string | null } }>(
-                  `SELECT value FROM system_settings WHERE key = 'bootstrap'`
-                );
-                const setting = settingRes.rows[0]?.value;
-                if (setting && setting.completed) {
-                  return null; // Fall through to Branch B / D
-                }
-
-                // c. Verify no user with role SUPER_ADMIN exists
-                const existingAdminRes = await client.query(
-                  `SELECT 1 FROM users u JOIN roles r ON u.role_id = r.id WHERE r.name = 'SUPER_ADMIN' LIMIT 1`
-                );
-                if ((existingAdminRes.rowCount ?? 0) > 0) {
-                  console.warn('⚠️ First-admin bootstrap aborted: A SUPER_ADMIN user already exists in the system.');
-                  return null; // Fall through to Branch B / D
-                }
-
-                // d. Validate BOOTSTRAP_COMPANY_ID exists in companies
-                const companyRes = await client.query(
-                  `SELECT id FROM companies WHERE id = $1`,
-                  [bootstrapCompanyId]
-                );
-                if ((companyRes.rowCount ?? 0) === 0) {
-                  throw new Error(`Configured bootstrap company "${bootstrapCompanyId}" does not exist`);
-                }
-
-                // e. Resolve an active office of that company (ORDER BY created_at ASC LIMIT 1)
-                const officeRes = await client.query<{ id: string }>(
-                  `SELECT id FROM offices WHERE company_id = $1 AND is_active = true ORDER BY created_at ASC LIMIT 1`,
-                  [bootstrapCompanyId]
-                );
-                if ((officeRes.rowCount ?? 0) === 0) {
-                  throw new Error(`Configured bootstrap company "${bootstrapCompanyId}" has no active office`);
-                }
-                const bootstrapOfficeId = officeRes.rows[0].id;
-
-                // f. Resolve roles.name = 'SUPER_ADMIN'
-                const roleRes = await client.query<{ id: string }>(
-                  `SELECT id FROM roles WHERE name = 'SUPER_ADMIN' LIMIT 1`
-                );
-                if ((roleRes.rowCount ?? 0) === 0) {
-                  throw new Error('Role "SUPER_ADMIN" not found in database');
-                }
-                const superAdminRoleId = roleRes.rows[0].id;
-
-                // g. Check for an existing users row in that company with lower(trim(email)) = firebaseEmail
-                const existingUserRes = await client.query<{ id: string; employee_code: string; firebase_uid: string | null }>(
-                  `SELECT id, employee_code, firebase_uid FROM users WHERE company_id = $1 AND LOWER(TRIM(email)) = $2`,
-                  [bootstrapCompanyId, firebaseEmail]
-                );
-
-                let targetUserId: string;
-
-                if ((existingUserRes.rowCount ?? 0) > 0) {
-                  const existingUser = existingUserRes.rows[0];
-                  if (existingUser.firebase_uid !== null && existingUser.firebase_uid !== firebaseUid) {
-                    throw new Error('Conflicting user with existing Firebase UID already exists in bootstrap company');
-                  }
-                  // PROMOTE existing user
-                  await client.query(
-                    `UPDATE users
-                     SET role_id = $1,
-                         firebase_uid = $2,
-                         auth_provider = 'firebase',
-                         firebase_linked_at = NOW(),
-                         is_active = true,
-                         updated_at = NOW()
-                     WHERE id = $3`,
-                    [superAdminRoleId, firebaseUid, existingUser.id]
-                  );
-                  targetUserId = existingUser.id;
-                } else {
-                  // Find collision-safe employee_code
-                  let codeIndex = 1;
-                  let chosenCode = '';
-                  while (!chosenCode) {
-                    const candidateCode = `BOOTSTRAP-${String(codeIndex).padStart(3, '0')}`;
-                    const codeCheck = await client.query(
-                      `SELECT 1 FROM users WHERE company_id = $1 AND employee_code = $2`,
-                      [bootstrapCompanyId, candidateCode]
-                    );
-                    if ((codeCheck.rowCount ?? 0) === 0) {
-                      chosenCode = candidateCode;
-                    } else {
-                      codeIndex++;
-                    }
-                  }
-
-                  const adminName = decodedToken.name || firebaseEmail.split('@')[0];
-                  const insertRes = await client.query<{ id: string }>(
-                    `INSERT INTO users (
-                       company_id, office_id, role_id, employee_code,
-                       name, email, password_hash, is_active,
-                       firebase_uid, auth_provider, firebase_linked_at
-                     )
-                     VALUES ($1, $2, $3, $4, $5, $6, NULL, true, $7, 'firebase', NOW())
-                     RETURNING id`,
-                    [
-                      bootstrapCompanyId,
-                      bootstrapOfficeId,
-                      superAdminRoleId,
-                      chosenCode,
-                      adminName,
-                      firebaseEmail,
-                      firebaseUid,
-                    ]
-                  );
-                  targetUserId = insertRes.rows[0].id;
-                }
-
-                // h. Set system_settings bootstrap = {completed:true, completed_at:NOW()}
-                await client.query(
-                  `UPDATE system_settings
-                   SET value = jsonb_build_object('completed', true, 'completed_at', NOW()),
-                       updated_at = NOW()
-                   WHERE key = 'bootstrap'`
-                );
-
-                // i. Write audit BOOTSTRAP_ADMIN_CREATED
-                await auditLogsRepository.create(
-                  {
-                    actor_user_id: targetUserId,
-                    action: AuditAction.BOOTSTRAP_ADMIN_CREATED,
-                    entity_type: 'user',
-                    entity_id: targetUserId,
-                    metadata: {
-                      email: firebaseEmail,
-                      company_id: bootstrapCompanyId,
-                      office_id: bootstrapOfficeId,
-                      role: 'SUPER_ADMIN',
-                      provider: signInProvider,
-                    },
-                  },
-                  client
-                );
-
-                // Fetch promoted/created user row
-                return await usersRepository.findById(targetUserId, client);
-              });
-            } catch (err: any) {
-              bootstrapError = err.message;
-              console.error('❌ First-admin bootstrap transaction failed:', err);
-            }
-
-            if (bootstrapError) {
-              res.status(500).json({
-                success: false,
-                error: {
-                  code: ErrorCode.INTERNAL_SERVER_ERROR,
-                  message: `Bootstrap failed: ${bootstrapError}`,
-                },
-              });
-              return;
-            }
-
-            if (bootstrapUser) {
-              await this.issueSuccessSession(bootstrapUser, req, res);
-              return;
-            }
-          }
-        }
+      // For unlinked users, Google Sign-In is required to onboard or link
+      if (signInProvider !== 'google.com') {
+        await loginAttemptsRepository.create({
+          event_type: LoginEventType.UNKNOWN_EMPLOYEE,
+          failure_reason: 'Account not provisioned. Google Sign-In required.',
+          ip_address: req.ip,
+          user_agent: req.headers['user-agent'],
+        });
+        res.status(403).json({
+          success: false,
+          error: {
+            code: ErrorCode.ACCOUNT_NOT_PROVISIONED,
+            message: 'Account not provisioned. Google Sign-In is required for employee onboarding.',
+          },
+        });
+        return;
       }
 
-      // 3. Branch B — Pre-provisioned employee (first-login linking)
+      // 2. Branch B — Pre-provisioned unlinked employee (first-login linking)
       const unlinkedMatches = await usersRepository.findUnlinkedByEmail(firebaseEmail);
 
       if (unlinkedMatches.length > 1) {
@@ -330,6 +145,7 @@ export class FirebaseAuthController {
         const candidate = unlinkedMatches[0];
         if (!candidate.is_active) {
           await loginAttemptsRepository.create({
+            company_id: candidate.company_id || undefined,
             user_id: candidate.id,
             event_type: LoginEventType.DISABLED_ACCOUNT,
             failure_reason: 'Account is deactivated',
@@ -344,6 +160,30 @@ export class FirebaseAuthController {
             },
           });
           return;
+        }
+
+        // Privileged role approval requirement:
+        // Do not auto-link privileged roles (COMPANY_ADMIN, HR_ADMIN, SUPER_ADMIN) unless approved
+        const privilegedRoles = [RoleName.COMPANY_ADMIN, RoleName.HR_ADMIN, RoleName.SUPER_ADMIN];
+        if (candidate.role_name && privilegedRoles.includes(candidate.role_name as RoleName)) {
+          if (!candidate.approved_for_firebase_link) {
+            await loginAttemptsRepository.create({
+              company_id: candidate.company_id || undefined,
+              user_id: candidate.id,
+              event_type: LoginEventType.UNKNOWN_EMPLOYEE,
+              failure_reason: 'Privileged unlinked account not approved for Firebase linking',
+              ip_address: req.ip,
+              user_agent: req.headers['user-agent'],
+            });
+            res.status(403).json({
+              success: false,
+              error: {
+                code: ErrorCode.FORBIDDEN,
+                message: 'Privileged account requires administrator approval before linking. Run approval script.',
+              },
+            });
+            return;
+          }
         }
 
         try {
@@ -373,6 +213,7 @@ export class FirebaseAuthController {
         }
 
         await auditLogsRepository.create({
+          company_id: candidate.company_id || undefined,
           actor_user_id: candidate.id,
           action: AuditAction.FIRST_LOGIN_LINKED,
           entity_type: 'user',
@@ -381,6 +222,7 @@ export class FirebaseAuthController {
             email: firebaseEmail,
             firebase_uid: firebaseUid,
             provider: signInProvider,
+            role: candidate.role_name,
           },
         });
 
@@ -393,22 +235,142 @@ export class FirebaseAuthController {
         return;
       }
 
-      // 4. Branch D — Unknown account
-      await loginAttemptsRepository.create({
-        event_type: LoginEventType.UNKNOWN_EMPLOYEE,
-        failure_reason: 'Account not provisioned for Firebase UID',
-        ip_address: req.ip,
-        user_agent: req.headers['user-agent'],
-      });
+      // Check collision: if a user with this email already exists in DB with another firebase UID
+      const existingEmailUser = await usersRepository.findByEmail(firebaseEmail);
+      if (existingEmailUser) {
+        await loginAttemptsRepository.create({
+          company_id: existingEmailUser.company_id || undefined,
+          user_id: existingEmailUser.id,
+          event_type: LoginEventType.UNKNOWN_EMPLOYEE,
+          failure_reason: 'Account with email already exists with different credentials',
+          ip_address: req.ip,
+          user_agent: req.headers['user-agent'],
+        });
+        res.status(409).json({
+          success: false,
+          error: {
+            code: ErrorCode.ACCOUNT_IDENTITY_MISMATCH,
+            message: 'An account with this email address already exists.',
+          },
+        });
+        return;
+      }
 
-      res.status(403).json({
-        success: false,
-        error: {
-          code: ErrorCode.ACCOUNT_NOT_PROVISIONED,
-          message: 'Account not provisioned',
-        },
-      });
-      return;
+      // 3. Branch C — Multi-Tenant Invitation acceptance or Self-Service Onboarding
+      const pendingInvitations = await invitationsRepository.findPendingByEmail(firebaseEmail);
+
+      // If user has exactly one pending invitation, automatically accept it on first login!
+      if (pendingInvitations.length === 1) {
+        const inv = pendingInvitations[0];
+        const userName = decodedToken.name || firebaseEmail.split('@')[0];
+
+        try {
+          const user = await withTransaction(async (client) => {
+            // Determine office: invitation office or primary active office
+            let officeId = inv.office_id;
+            if (!officeId) {
+              const offices = await officesRepository.findAll(inv.company_id);
+              const primary = offices.find((o) => o.is_active) || offices[0];
+              if (!primary) {
+                throw new Error('Target company has no active office');
+              }
+              officeId = primary.id;
+            }
+
+            const code = `EMP-${Date.now().toString().slice(-4)}`;
+
+            const newUser = await usersRepository.create(
+              {
+                company_id: inv.company_id,
+                office_id: officeId,
+                department_id: inv.department_id || null,
+                role_id: inv.role_id,
+                employee_code: code,
+                name: userName,
+                email: firebaseEmail,
+                firebase_uid: firebaseUid,
+                auth_provider: 'firebase',
+                firebase_linked_at: new Date(),
+              },
+              client
+            );
+
+            await invitationsRepository.markAccepted(inv.id, newUser.id, client);
+
+            await auditLogsRepository.create(
+              {
+                company_id: inv.company_id,
+                actor_user_id: newUser.id,
+                action: AuditAction.INVITATION_ACCEPTED,
+                entity_type: 'invitation',
+                entity_id: inv.id,
+                metadata: {
+                  company_id: inv.company_id,
+                  role_id: inv.role_id,
+                  email: firebaseEmail,
+                },
+              },
+              client
+            );
+
+            return newUser;
+          });
+
+          await this.issueSuccessSession(user, req, res);
+          return;
+        } catch (invErr: any) {
+          if (invErr.code === '23505') {
+            res.status(409).json({
+              success: false,
+              error: {
+                code: ErrorCode.FORBIDDEN,
+                message: 'Account was created concurrently. Please retry login.',
+              },
+            });
+            return;
+          }
+          throw invErr;
+        }
+      }
+
+      // If multiple invitations exist or zero invitations exist:
+      // Create an onboarding user with company_id: null.
+      // The user will be routed to /onboarding to either accept one of their invitations or create their company.
+      const userName = decodedToken.name || firebaseEmail.split('@')[0];
+      try {
+        const onboardingUser = await usersRepository.createOnboardingUser({
+          name: userName,
+          email: firebaseEmail,
+          firebase_uid: firebaseUid,
+        });
+
+        await auditLogsRepository.create({
+          actor_user_id: onboardingUser.id,
+          action: AuditAction.USER_CREATED,
+          entity_type: 'user',
+          entity_id: onboardingUser.id,
+          metadata: {
+            email: firebaseEmail,
+            status: pendingInvitations.length > 1 ? 'onboarding_multiple_invitations' : 'onboarding_no_company',
+            invitations_count: pendingInvitations.length,
+          },
+        });
+
+        await this.issueSuccessSession(onboardingUser, req, res);
+        return;
+      } catch (createErr: any) {
+        if (createErr.code === '23505') {
+          res.status(409).json({
+            success: false,
+            error: {
+              code: ErrorCode.FORBIDDEN,
+              message: 'Account was created concurrently. Please retry login.',
+            },
+          });
+          return;
+        }
+        throw createErr;
+      }
     } catch (err) {
       next(err);
     }
@@ -454,6 +416,7 @@ export class FirebaseAuthController {
 
   private async issueSuccessSession(userRow: UserRow, req: Request, res: Response): Promise<void> {
     await loginAttemptsRepository.create({
+      company_id: userRow.company_id || undefined,
       user_id: userRow.id,
       event_type: LoginEventType.SUCCESS,
       ip_address: req.ip,
