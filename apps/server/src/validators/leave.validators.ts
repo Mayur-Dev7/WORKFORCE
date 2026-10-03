@@ -38,13 +38,13 @@ export const AllocateBalanceSchema = z.object({
 export const CreateLeaveTypeSchema = z.object({
   code: z.string().min(1).max(30).regex(/^[A-Z_]+$/, 'Code must be uppercase letters and underscores only (e.g. ANNUAL_LEAVE)'),
   name: z.string().min(2).max(100),
-  annual_quota: z.number().min(0).max(365),
+  annual_quota: z.coerce.number().min(0).max(365),
   is_paid: z.boolean().default(false),
 });
 
 export const UpdateLeaveTypeSchema = z.object({
   name: z.string().min(2).max(100).optional(),
-  annual_quota: z.number().min(0).max(365).optional(),
+  annual_quota: z.coerce.number().min(0).max(365).optional(),
   is_paid: z.boolean().optional(),
   is_active: z.boolean().optional(),
 });
