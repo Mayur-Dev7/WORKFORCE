@@ -1,18 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { message } from 'antd';
+import {
+  Button,
+  Card,
+  Typography,
+  Alert,
+  Segmented,
+  Collapse,
+  Space,
+  Tag,
+  Avatar,
+  message,
+} from 'antd';
 import {
   CameraOutlined,
   UploadOutlined,
   CheckOutlined,
   CloseOutlined,
-  DeleteOutlined,
   PlusOutlined,
   UndoOutlined,
   LoadingOutlined,
-  RightOutlined,
-  DownOutlined,
   UserOutlined,
-  ArrowRightOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.js';
@@ -24,6 +31,8 @@ import {
   buildCentroidTemplate,
 } from '../../services/face.client.js';
 
+const { Title, Text } = Typography;
+
 interface FaceSample {
   id: string;
   previewUrl: string;
@@ -33,11 +42,11 @@ interface FaceSample {
 }
 
 const GUIDED_POSES = [
-  { step: 1, title: 'Frontal Neutral', shortTitle: 'Frontal', desc: 'Look directly at the camera with a relaxed expression' },
-  { step: 2, title: 'Frontal Smile', shortTitle: 'Frontal Smile', desc: 'Look directly at camera with a slight natural smile' },
-  { step: 3, title: 'Turn Slightly Left', shortTitle: 'Slight left', desc: 'Turn head ~15° to your left so right cheek is visible' },
-  { step: 4, title: 'Turn Slightly Right', shortTitle: 'Slight right', desc: 'Turn head ~15° to your right so left cheek is visible' },
-  { step: 5, title: 'Slight Tilt Up/Down', shortTitle: 'Slight up/down', desc: 'Tilt your chin slightly up or down to capture vertical angle' },
+  { step: 1, title: 'Frontal', shortTitle: 'Frontal', desc: 'Look directly at the camera with a relaxed expression' },
+  { step: 2, title: 'Frontal Smile', shortTitle: 'Smile', desc: 'Look directly at camera with a slight natural smile' },
+  { step: 3, title: 'Turn Slightly Left', shortTitle: 'Left', desc: 'Turn head ~15° to your left so right cheek is visible' },
+  { step: 4, title: 'Turn Slightly Right', shortTitle: 'Right', desc: 'Turn head ~15° to your right so left cheek is visible' },
+  { step: 5, title: 'Slight Tilt', shortTitle: 'Tilt', desc: 'Tilt your chin slightly up or down to capture vertical angle' },
 ];
 
 export const SelfEnrollmentPage: React.FC = () => {
@@ -48,66 +57,45 @@ export const SelfEnrollmentPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  // Current enrolled face
   const [currentReferenceFace, setCurrentReferenceFace] = useState<string | null>(null);
-  const [, setLoadingCurrentFace] = useState(false);
 
-  // Uploaded samples (up to 5 photos)
+  // Upload flow
   const [uploadSamples, setUploadSamples] = useState<FaceSample[]>([]);
   const [uploadProcessing, setUploadProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Guided camera samples (up to 5 poses)
+  // Camera flow
   const [cameraSamples, setCameraSamples] = useState<FaceSample[]>([]);
   const [currentPoseIdx, setCurrentPoseIdx] = useState(0);
   const [lastCapturedPose, setLastCapturedPose] = useState<string | null>(null);
 
-  // Camera video stream
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Live face detection feedback on camera
   const [liveFaceDetected, setLiveFaceDetected] = useState(false);
   const [liveQuality, setLiveQuality] = useState(0);
   const [capturingPose, setCapturingPose] = useState(false);
 
-  // Technical details disclosure
-  const [techOpen, setTechOpen] = useState(false);
   const [lastDetectedFormat, setLastDetectedFormat] = useState<string>('Standard');
 
-  // Fetch current enrolled face if user.face_enrolled is true
+  // ── Fetch enrolled face preview ──────────────────────────────────────────
   useEffect(() => {
     if (user?.face_enrolled) {
-      setLoadingCurrentFace(true);
-      api
-        .get('/users/self/face-template')
-        .then((res) => {
-          if (res.data?.data?.referenceImage) {
-            setCurrentReferenceFace(res.data.data.referenceImage);
-          }
-        })
-        .catch((err) => {
-          console.warn('Could not fetch existing face template', err);
-        })
-        .finally(() => setLoadingCurrentFace(false));
+      api.get('/users/self/face-template')
+        .then((res) => { if (res.data?.data?.referenceImage) setCurrentReferenceFace(res.data.data.referenceImage); })
+        .catch(console.warn);
     }
   }, [user?.face_enrolled]);
 
-  // Clean up camera stream on unmount
-  useEffect(() => {
-    return () => {
-      stopCamera();
-    };
-  }, []);
+  useEffect(() => { return () => { stopCamera(); }; }, []);
 
+  // ── Camera helpers ───────────────────────────────────────────────────────
   const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
     setCameraActive(false);
     setCameraReady(false);
     setLiveFaceDetected(false);
@@ -116,19 +104,12 @@ export const SelfEnrollmentPage: React.FC = () => {
   const startCamera = async () => {
     setCameraError(null);
     try {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      }
+      streamRef.current?.getTracks().forEach((t) => t.stop());
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          facingMode: 'user',
-        },
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
       });
       streamRef.current = stream;
       setCameraActive(true);
-
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.onloadedmetadata = () => {
@@ -136,9 +117,8 @@ export const SelfEnrollmentPage: React.FC = () => {
           setCameraReady(true);
         };
       }
-    } catch (err: any) {
-      console.error('Camera access failed:', err);
-      setCameraError('Unable to access camera. Please check permissions or upload photos instead.');
+    } catch {
+      setCameraError('Unable to access camera. Check permissions or upload photos instead.');
     }
   };
 
@@ -151,29 +131,18 @@ export const SelfEnrollmentPage: React.FC = () => {
     }
   }, [cameraActive]);
 
-  // Live face detection loop for camera
+  // Live face detection loop — runs every 6 frames to keep mobile smooth
   useEffect(() => {
     let animId: number;
     let frameCounter = 0;
-
     const checkFrame = async () => {
-      if (
-        videoRef.current &&
-        videoRef.current.readyState === 4 &&
-        cameraReady &&
-        cameraActive
-      ) {
+      if (videoRef.current && videoRef.current.readyState === 4 && cameraReady && cameraActive) {
         frameCounter++;
-        // Run inference every 6 frames to keep mobile UI super smooth
         if (frameCounter % 6 === 0) {
           try {
             const detection = await analyzeVideoFrame(videoRef.current);
-            if (detection.faceCount === 1) {
-              setLiveFaceDetected(true);
-              setLiveQuality(detection.quality);
-            } else {
-              setLiveFaceDetected(false);
-            }
+            setLiveFaceDetected(detection.faceCount === 1);
+            if (detection.faceCount === 1) setLiveQuality(detection.quality);
           } catch {
             setLiveFaceDetected(false);
           }
@@ -181,47 +150,28 @@ export const SelfEnrollmentPage: React.FC = () => {
       }
       animId = requestAnimationFrame(checkFrame);
     };
-
-    if (cameraActive && cameraReady) {
-      animId = requestAnimationFrame(checkFrame);
-    }
+    if (cameraActive && cameraReady) animId = requestAnimationFrame(checkFrame);
     return () => cancelAnimationFrame(animId);
   }, [cameraActive, cameraReady]);
 
-  // Tab switch handler
   const handleTabChange = (key: 'upload' | 'camera') => {
-    if (key === 'camera') {
-      startCamera();
-    } else {
-      stopCamera();
-    }
+    if (key === 'camera') startCamera();
+    else stopCamera();
     setActiveTab(key);
   };
 
-  // ---------------------------------------------------------------------------
-  // Upload Handler (Supports multiple files up to 5)
-  // ---------------------------------------------------------------------------
+  // ── Upload handler ───────────────────────────────────────────────────────
   const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-
-    if (uploadSamples.length >= 5) {
-      message.warning('Maximum of 5 photos reached.');
-      return;
-    }
-
+    if (uploadSamples.length >= 5) { message.warning('Maximum of 5 photos reached.'); return; }
     setUploadProcessing(true);
     setStatusMessage('Analyzing photo...');
-
     for (let i = 0; i < files.length; i++) {
-      if (uploadSamples.length + i >= 5) {
-        message.warning('Maximum 5 photos reached.');
-        break;
-      }
-      const file = files[i];
+      if (uploadSamples.length + i >= 5) { message.warning('Maximum 5 photos reached.'); break; }
       try {
-        const result = await analyzeImageFile(file, (msg) => setStatusMessage(msg));
-        setLastDetectedFormat(result.converted ? 'HEIC Converted' : file.type || 'JPG');
+        const result = await analyzeImageFile(files[i], (msg) => setStatusMessage(msg));
+        setLastDetectedFormat(result.converted ? 'HEIC Converted' : files[i].type || 'JPG');
         const newSample: FaceSample = {
           id: `upload-${Date.now()}-${Math.random()}`,
           previewUrl: result.previewUrl,
@@ -229,71 +179,39 @@ export const SelfEnrollmentPage: React.FC = () => {
           quality: Math.round(result.quality * 100),
           label: `Photo ${uploadSamples.length + i + 1}`,
         };
-
-        setUploadSamples((prev) => {
-          if (prev.length >= 5) return prev;
-          return [...prev, newSample];
-        });
+        setUploadSamples((prev) => (prev.length >= 5 ? prev : [...prev, newSample]));
       } catch (err: any) {
         message.error(err.message || 'No face detected in selected photo');
       }
     }
-
     setUploadProcessing(false);
     setStatusMessage(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleRemoveUploadSample = (id: string) => {
-    setUploadSamples((prev) => prev.filter((s) => s.id !== id));
-  };
-
-  // ---------------------------------------------------------------------------
-  // Guided Camera Poses Handler (Capture 3 to 5 guided poses)
-  // ---------------------------------------------------------------------------
+  // ── Camera capture handler ───────────────────────────────────────────────
   const handleCapturePose = async () => {
     if (!videoRef.current || !cameraActive) return;
-
     setCapturingPose(true);
     try {
       const detection = await analyzeVideoFrame(videoRef.current);
-      if (detection.faceCount === 0) {
-        message.warning('Position your face inside the frame');
-        setCapturingPose(false);
-        return;
-      }
-      if (detection.faceCount > 1) {
-        message.warning('Multiple faces detected. Keep only your face in frame.');
-        setCapturingPose(false);
-        return;
-      }
-
+      if (detection.faceCount === 0) { message.warning('Position your face inside the frame'); return; }
+      if (detection.faceCount > 1) { message.warning('Multiple faces detected. Keep only your face in frame.'); return; }
       const previewBase64 = captureVideoFrameAsBase64(videoRef.current);
-      const poseInfo = GUIDED_POSES[currentPoseIdx] || { title: `Pose ${cameraSamples.length + 1}`, shortTitle: `Pose ${cameraSamples.length + 1}` };
-
+      const poseInfo = GUIDED_POSES[currentPoseIdx] || { title: `Pose ${cameraSamples.length + 1}`, shortTitle: `Pose ${cameraSamples.length + 1}`, desc: '' };
       const newSample: FaceSample = {
         id: `camera-pose-${currentPoseIdx + 1}-${Date.now()}`,
         previewUrl: previewBase64,
         embedding: detection.embedding,
         quality: Math.round(detection.quality * 100),
-        label: poseInfo.shortTitle || poseInfo.title,
+        label: poseInfo.shortTitle,
       };
-
-      const updated = [...cameraSamples, newSample];
-      setCameraSamples(updated);
-      setLastCapturedPose(poseInfo.shortTitle || poseInfo.title);
+      setCameraSamples((prev) => [...prev, newSample]);
+      setLastCapturedPose(poseInfo.shortTitle);
       setTimeout(() => setLastCapturedPose(null), 2000);
-
-      if (currentPoseIdx < GUIDED_POSES.length - 1) {
-        setCurrentPoseIdx((prev) => prev + 1);
-      }
-    } catch {
-      message.error('Failed to capture pose');
-    } finally {
-      setCapturingPose(false);
-    }
+      if (currentPoseIdx < GUIDED_POSES.length - 1) setCurrentPoseIdx((p) => p + 1);
+    } catch { message.error('Failed to capture pose'); }
+    finally { setCapturingPose(false); }
   };
 
   const handleResetCameraPoses = () => {
@@ -302,51 +220,35 @@ export const SelfEnrollmentPage: React.FC = () => {
     setLastCapturedPose(null);
   };
 
-  // ---------------------------------------------------------------------------
-  // Build Centroid Template & Submit Enrollment
-  // ---------------------------------------------------------------------------
+  // ── Save enrollment ──────────────────────────────────────────────────────
   const handleSaveEnrollment = async (samplesToSave: FaceSample[]) => {
-    if (samplesToSave.length === 0) {
-      message.error('Please capture or upload at least 1 face photo (3 to 5 recommended).');
-      return;
-    }
-
+    if (samplesToSave.length === 0) { message.error('Please capture or upload at least 1 face photo.'); return; }
     setSubmitting(true);
     try {
-      // Average all embeddings into single normalized centroid vector
       const centroidEmbedding = buildCentroidTemplate(samplesToSave.map((s) => s.embedding));
-      const primaryPhoto = samplesToSave[0].previewUrl;
-
       await api.post('/users/self/enroll-face', {
         embedding: centroidEmbedding,
         modelName: '@vladmandic/human',
         modelVersion: '3.2.0',
-        referenceImage: primaryPhoto,
+        referenceImage: samplesToSave[0].previewUrl,
       });
-
       message.success('Face reference updated');
       stopCamera();
       await refreshUser();
       navigate('/employee/attendance/check-in');
     } catch (err: any) {
       message.error(err.response?.data?.error?.message || 'Failed to save face reference');
-    } finally {
-      setSubmitting(false);
-    }
+    } finally { setSubmitting(false); }
   };
 
+  // ── Computed values ──────────────────────────────────────────────────────
   const currentPose = GUIDED_POSES[currentPoseIdx] || GUIDED_POSES[0];
 
-  // Camera Outline State
-  const cameraOutlineState = cameraError
-    ? 'error'
-    : liveFaceDetected && liveQuality >= 0.65
-    ? 'ready'
-    : liveFaceDetected
-    ? 'detected'
+  const cameraOutlineState = cameraError ? 'error'
+    : liveFaceDetected && liveQuality >= 0.65 ? 'ready'
+    : liveFaceDetected ? 'detected'
     : 'neutral';
 
-  // Camera Guidance Text
   const getCameraGuidanceText = () => {
     if (capturingPose) return 'Capturing...';
     if (lastCapturedPose) return `✓ ${lastCapturedPose} captured`;
@@ -356,115 +258,98 @@ export const SelfEnrollmentPage: React.FC = () => {
     return '✓ Face detected';
   };
 
+  // ── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="apple-face-reg-container">
-      {/* ─── Page Title Header (Clean, HIG hierarchy) ─── */}
-      <div className="apple-face-reg-header">
-        <h1 className="apple-face-reg-title">Face Registration</h1>
-        <p className="apple-face-reg-subtitle">
+    <div style={{
+      maxWidth: 500,
+      margin: '0 auto',
+      padding: '12px 16px calc(env(safe-area-inset-bottom, 20px) + 80px)',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif',
+    }}>
+
+      {/* ─── Page Header ─── */}
+      <div style={{ marginBottom: 16 }}>
+        <Title level={3} style={{ margin: '0 0 4px', fontWeight: 700, letterSpacing: -0.5, fontSize: 26 }}>
+          Face Registration
+        </Title>
+        <Text type="secondary" style={{ fontSize: 14, lineHeight: '1.4' }}>
           Create or update your face reference for secure attendance verification.
-        </p>
+        </Text>
       </div>
 
-      {/* ─── Reference Face Status (Simplified, no technical clutter) ─── */}
-      {/* Only show when not in active camera mode to prioritize the live camera */}
-      {activeTab !== 'camera' && (
-        <>
-          {user?.face_enrolled ? (
-            <div className="apple-face-reg-ref-card">
-              <div className="apple-face-reg-ref-row">
-                {currentReferenceFace ? (
-                  <img
-                    src={currentReferenceFace}
-                    alt="Reference face"
-                    className="apple-face-reg-ref-thumb"
-                  />
-                ) : (
-                  <div className="apple-face-reg-ref-thumb-placeholder">
-                    <UserOutlined />
-                  </div>
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>Face reference</span>
-                    <span style={{ fontSize: 13, color: '#16a34a', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                      <CheckOutlined style={{ fontSize: 11 }} /> Active
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
-                    Your biometric reference is already registered.
-                  </div>
+      {/* ─── Status Banner — animated collapse so no layout shift ─── */}
+      <div style={{
+        overflow: 'hidden',
+        maxHeight: activeTab === 'camera' ? 0 : 120,
+        opacity: activeTab === 'camera' ? 0 : 1,
+        marginBottom: activeTab === 'camera' ? 0 : 12,
+        transition: 'max-height 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease, margin-bottom 0.28s ease',
+      }}>
+        {user?.face_enrolled ? (
+          <Card
+            size="small"
+            styles={{ body: { padding: '10px 14px' } }}
+            style={{ borderRadius: 14, border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {currentReferenceFace ? (
+                <img src={currentReferenceFace} alt="Reference face"
+                  style={{ width: 50, height: 50, borderRadius: 11, objectFit: 'cover', flexShrink: 0, border: '1px solid rgba(0,0,0,0.06)' }} />
+              ) : (
+                <Avatar size={50} icon={<UserOutlined />} style={{ borderRadius: 11, flexShrink: 0 }} />
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Space size={6}>
+                  <Text strong style={{ fontSize: 15 }}>Face reference</Text>
+                  <Tag color="success" icon={<CheckOutlined />} style={{ margin: 0 }}>Active</Tag>
+                </Space>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Your biometric reference is already registered.</Text>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const el = document.getElementById('reg-input-section');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#0071e3',
-                    fontSize: 14,
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    padding: '8px 4px',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  Update
-                </button>
               </div>
+              <Button
+                type="link"
+                size="small"
+                style={{ padding: '0 4px', whiteSpace: 'nowrap', fontWeight: 500 }}
+                onClick={() => document.getElementById('reg-mode-selector')?.scrollIntoView({ behavior: 'smooth' })}
+              >
+                Update
+              </Button>
             </div>
-          ) : (
-            <div
-              style={{
-                background: '#fffbeb',
-                border: '1px solid #fef3c7',
-                borderRadius: 14,
-                padding: '12px 14px',
-                marginBottom: 16,
-                fontSize: 13,
-                color: '#92400e',
-              }}
-            >
-              Face reference required to enable attendance check-in.
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ─── Mode Selector (Two clean methods: Upload or Camera) ─── */}
-      <div id="reg-input-section">
-        <div className="apple-face-reg-tabs">
-          <button
-            type="button"
-            className={`apple-face-reg-tab-btn ${activeTab === 'upload' ? 'active' : ''}`}
-            onClick={() => handleTabChange('upload')}
-          >
-            <UploadOutlined style={{ fontSize: 15 }} />
-            Upload photos
-          </button>
-          <button
-            type="button"
-            className={`apple-face-reg-tab-btn ${activeTab === 'camera' ? 'active' : ''}`}
-            onClick={() => handleTabChange('camera')}
-          >
-            <CameraOutlined style={{ fontSize: 15 }} />
-            Use camera
-          </button>
-        </div>
-        <div className="apple-face-reg-tab-caption">
-          {activeTab === 'upload' ? 'Upload 1–5 clear face photos' : 'Capture 3–5 guided poses'}
-        </div>
+          </Card>
+        ) : (
+          <Alert
+            message="Face reference required to enable attendance check-in."
+            type="warning"
+            showIcon
+            style={{ borderRadius: 12 }}
+          />
+        )}
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════════ */}
-      {/* FLOW 1: UPLOAD PHOTOS                                           */}
-      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* ─── Mode Selector (Segmented — smooth sliding pill, zero shake) ─── */}
+      <div id="reg-mode-selector" style={{ marginBottom: 4 }}>
+        <Segmented
+          block
+          size="large"
+          value={activeTab}
+          onChange={(val) => handleTabChange(val as 'upload' | 'camera')}
+          options={[
+            { label: <Space size={6}><UploadOutlined />Upload photos</Space>, value: 'upload' },
+            { label: <Space size={6}><CameraOutlined />Use camera</Space>, value: 'camera' },
+          ]}
+          style={{ borderRadius: 12 }}
+        />
+        <Text type="secondary" style={{ fontSize: 12, display: 'block', textAlign: 'center', marginTop: 6, marginBottom: 16 }}>
+          {activeTab === 'upload' ? 'Upload 1–5 clear face photos' : 'Capture 3–5 guided poses'}
+        </Text>
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* FLOW 1 — UPLOAD PHOTOS                                            */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'upload' && (
         <div>
-          {/* Hidden File Input */}
           <input
             ref={fileInputRef}
             type="file"
@@ -474,75 +359,80 @@ export const SelfEnrollmentPage: React.FC = () => {
             onChange={handleFilesSelected}
           />
 
-          {/* Clean Upload Box */}
+          {/* Dragger-style upload zone */}
           <div
-            className="apple-face-reg-upload-area"
-            onClick={() => fileInputRef.current?.click()}
             role="button"
             tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click();
+            onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
+            style={{
+              border: '1.5px dashed #d9d9d9',
+              borderRadius: 16,
+              background: '#fafafa',
+              padding: '32px 16px',
+              textAlign: 'center',
+              cursor: 'pointer',
+              outline: 'none',
+              transition: 'border-color 0.18s ease, background 0.18s ease',
             }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#1677ff'; e.currentTarget.style.background = '#f0f7ff'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#d9d9d9'; e.currentTarget.style.background = '#fafafa'; }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = '#1677ff'; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = '#d9d9d9'; }}
           >
-            <div className="apple-face-reg-upload-icon">
+            <div style={{ fontSize: 32, color: '#1677ff', marginBottom: 8 }}>
               {uploadProcessing ? <LoadingOutlined /> : <UploadOutlined />}
             </div>
-            <div className="apple-face-reg-upload-title">Select face photos</div>
-            <div className="apple-face-reg-upload-hint">1–5 photos • JPG, PNG, WEBP, HEIC</div>
+            <Text strong style={{ display: 'block', fontSize: 15, marginBottom: 4 }}>Select face photos</Text>
+            <Text type="secondary" style={{ fontSize: 13 }}>1–5 photos • JPG, PNG, WEBP, HEIC</Text>
             {statusMessage && (
-              <div style={{ marginTop: 8, fontSize: 12, color: '#0071e3', fontWeight: 500 }}>
+              <Text style={{ display: 'block', marginTop: 8, fontSize: 12, color: '#1677ff', fontWeight: 500 }}>
                 {statusMessage}
-              </div>
+              </Text>
             )}
           </div>
 
-          {/* Upload Gallery Thumbnails */}
+          {/* Uploaded photo grid */}
           {uploadSamples.length > 0 && (
-            <div className="apple-face-reg-gallery">
-              <div className="apple-face-reg-gallery-header">
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
-                  {uploadSamples.length} of 5 photos
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setUploadSamples([])}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#64748b',
-                    fontSize: 13,
-                    cursor: 'pointer',
-                    padding: 0,
-                  }}
-                >
+            <div style={{ marginTop: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <Text strong>{uploadSamples.length} of 5 photos</Text>
+                <Button type="link" danger size="small" style={{ padding: 0 }} onClick={() => setUploadSamples([])}>
                   Clear all
-                </button>
+                </Button>
               </div>
 
-              <div className="apple-face-reg-gallery-grid">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
                 {uploadSamples.map((sample, idx) => (
-                  <div key={sample.id} className="apple-face-reg-thumb-card">
-                    <img src={sample.previewUrl} alt={sample.label} />
+                  <div
+                    key={sample.id}
+                    style={{ position: 'relative', aspectRatio: '1/1', borderRadius: 12, overflow: 'hidden', border: '1.5px solid #e2e8f0', background: '#0f172a' }}
+                  >
+                    <img src={sample.previewUrl} alt={sample.label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     <button
                       type="button"
-                      className="apple-face-reg-thumb-del"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRemoveUploadSample(sample.id);
-                      }}
-                      title="Remove photo"
+                      onClick={(e) => { e.stopPropagation(); setUploadSamples((p) => p.filter((s) => s.id !== sample.id)); }}
+                      style={{ position: 'absolute', top: 4, right: 4, width: 26, height: 26, borderRadius: '50%', background: 'rgba(0,0,0,0.65)', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, cursor: 'pointer', transition: 'background 0.15s' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = '#ff4d4f'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.65)'; }}
                     >
                       <CloseOutlined />
                     </button>
-                    {idx === 0 && <span className="apple-face-reg-thumb-badge">Primary</span>}
+                    {idx === 0 && (
+                      <span style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,0.68)', color: '#fff', fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 6 }}>
+                        Primary
+                      </span>
+                    )}
                   </div>
                 ))}
 
                 {uploadSamples.length < 5 && (
                   <button
                     type="button"
-                    className="apple-face-reg-add-tile"
                     onClick={() => fileInputRef.current?.click()}
+                    style={{ aspectRatio: '1/1', borderRadius: 12, border: '1.5px dashed #d9d9d9', background: '#fafafa', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#8c8c8c', fontSize: 12, cursor: 'pointer', transition: 'all 0.15s ease' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#1677ff'; e.currentTarget.style.color = '#1677ff'; e.currentTarget.style.background = '#f0f7ff'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#d9d9d9'; e.currentTarget.style.color = '#8c8c8c'; e.currentTarget.style.background = '#fafafa'; }}
                   >
                     <PlusOutlined style={{ fontSize: 20 }} />
                     <span>Add photo</span>
@@ -550,80 +440,86 @@ export const SelfEnrollmentPage: React.FC = () => {
                 )}
               </div>
 
-              <div style={{ marginTop: 18 }}>
-                <button
-                  type="button"
-                  className="apple-face-reg-primary-btn success"
-                  disabled={uploadSamples.length === 0 || submitting}
-                  onClick={() => handleSaveEnrollment(uploadSamples)}
-                >
-                  {submitting ? <LoadingOutlined /> : null}
-                  Save Face Reference
-                </button>
-              </div>
+              <Button
+                type="primary"
+                size="large"
+                block
+                loading={submitting}
+                disabled={uploadSamples.length === 0 || submitting}
+                onClick={() => handleSaveEnrollment(uploadSamples)}
+                style={{ marginTop: 18, height: 50, borderRadius: 14, fontWeight: 600, fontSize: 16, background: '#16a34a', borderColor: '#16a34a' }}
+              >
+                Save Face Reference
+              </Button>
             </div>
           )}
         </div>
       )}
 
-      {/* ═══════════════════════════════════════════════════════════════ */}
-      {/* FLOW 2: FOCUSED CAMERA WORKFLOW                                 */}
-      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* FLOW 2 — GUIDED CAMERA CAPTURE                                    */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'camera' && (
         <div>
           {cameraError && (
-            <div
-              style={{
-                background: '#fff1f2',
-                border: '1px solid #fecdd3',
-                borderRadius: 12,
-                padding: '10px 14px',
-                color: '#e11d48',
-                fontSize: 13,
-                marginBottom: 12,
-              }}
-            >
-              {cameraError}
-            </div>
+            <Alert
+              message={cameraError}
+              type="error"
+              showIcon
+              style={{ borderRadius: 12, marginBottom: 12 }}
+            />
           )}
 
-          {/* Step & Pose Header */}
-          <div className="apple-face-reg-camera-header">
-            <div className="apple-face-reg-step-label">Step {Math.min(currentPoseIdx + 1, 5)} of 5</div>
-            <h2 className="apple-face-reg-pose-name">{currentPose.shortTitle}</h2>
-            <p className="apple-face-reg-pose-desc">{currentPose.desc}</p>
+          {/* Compact step header — fixed height prevents layout jump */}
+          <div style={{ minHeight: 66, marginBottom: 8 }}>
+            <Text style={{ fontSize: 12, fontWeight: 700, color: '#1677ff', textTransform: 'uppercase', letterSpacing: 0.6, display: 'block' }}>
+              Step {Math.min(currentPoseIdx + 1, 5)} of 5
+            </Text>
+            <Text strong style={{ fontSize: 18, display: 'block', margin: '2px 0 2px' }}>
+              {currentPose.shortTitle}
+            </Text>
+            <Text type="secondary" style={{ fontSize: 13, lineHeight: '1.35' }}>
+              {currentPose.desc}
+            </Text>
           </div>
 
-          {/* Compact Pose Progress (● ─ ○ ─ ○ ─ ○ ─ ○) */}
-          <div className="apple-face-reg-pose-progress">
+          {/* Step progress dots */}
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12, padding: '0 4px' }}>
             {GUIDED_POSES.map((pose, i) => {
               const isCompleted = i < cameraSamples.length;
               const isActive = i === currentPoseIdx && !isCompleted;
               return (
                 <React.Fragment key={pose.step}>
-                  <div className="apple-face-reg-pose-dot-wrap">
-                    <div
-                      className={`apple-face-reg-pose-dot ${
-                        isCompleted ? 'completed' : isActive ? 'active' : 'upcoming'
-                      }`}
-                    >
-                      {isCompleted ? <CheckOutlined style={{ fontSize: 10 }} /> : pose.step}
-                    </div>
+                  <div style={{
+                    width: 26, height: 26, borderRadius: '50%',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11, fontWeight: 600, flexShrink: 0,
+                    background: isCompleted ? '#16a34a' : isActive ? '#1677ff' : '#f0f0f0',
+                    color: isCompleted || isActive ? '#fff' : '#bfbfbf',
+                    border: isActive ? '2px solid rgba(22,119,255,0.25)' : '1px solid transparent',
+                    boxShadow: isActive ? '0 0 0 3px rgba(22,119,255,0.15)' : 'none',
+                    transition: 'all 0.22s ease',
+                  }}>
+                    {isCompleted ? <CheckOutlined style={{ fontSize: 10 }} /> : pose.step}
                   </div>
                   {i < GUIDED_POSES.length - 1 && (
-                    <div
-                      className={`apple-face-reg-pose-line ${
-                        i < cameraSamples.length ? 'completed' : ''
-                      }`}
-                    />
+                    <div style={{
+                      flex: 1, height: 2,
+                      background: i < cameraSamples.length ? '#16a34a' : '#f0f0f0',
+                      margin: '0 4px',
+                      transition: 'background 0.22s ease',
+                    }} />
                   )}
                 </React.Fragment>
               );
             })}
           </div>
 
-          {/* Live Camera Viewport */}
-          <div className="apple-face-reg-camera-box">
+          {/* ─── Camera Viewport ─── 
+              Height is capped at clamp(180px,50vw,260px) so Capture button
+              always fits on screen without scrolling on any phone.
+              GPU-composited via will-change on the video element. */}
+          <div className="apple-face-reg-camera-box" style={{ marginBottom: 12 }}>
             <video
               ref={videoRef}
               autoPlay
@@ -631,170 +527,116 @@ export const SelfEnrollmentPage: React.FC = () => {
               muted
               className="apple-face-reg-video"
             />
-
-            {/* Clean Face Guidance Frame */}
             <div className={`apple-face-reg-guide ${cameraOutlineState}`} />
-
-            {/* Concise Status Badge (Single message, no raw technical stats) */}
             <div className="apple-face-reg-status-pill">
               {getCameraGuidanceText()}
             </div>
           </div>
 
-          {/* Primary Action Button (Clean: [ Capture ]) */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <button
-              type="button"
-              className="apple-face-reg-primary-btn"
-              disabled={
-                !cameraActive ||
-                !liveFaceDetected ||
-                capturingPose ||
-                cameraSamples.length >= 5
-              }
-              onClick={handleCapturePose}
-            >
-              {capturingPose ? <LoadingOutlined /> : <CameraOutlined />}
-              Capture
-            </button>
+          {/* ─── Capture Button — always visible, no scroll needed ─── */}
+          <Button
+            type="primary"
+            size="large"
+            block
+            icon={capturingPose ? <LoadingOutlined /> : <CameraOutlined />}
+            disabled={!cameraActive || !liveFaceDetected || capturingPose || cameraSamples.length >= 5}
+            onClick={handleCapturePose}
+            style={{ height: 52, borderRadius: 14, fontWeight: 600, fontSize: 16, marginBottom: 10 }}
+          >
+            {capturingPose ? 'Capturing...' : 'Capture'}
+          </Button>
 
-            {/* Secondary Controls */}
-            <div style={{ display: 'flex', gap: 8 }}>
-              {cameraSamples.length > 0 && (
-                <button
-                  type="button"
-                  className="apple-face-reg-secondary-btn"
-                  onClick={handleResetCameraPoses}
-                  style={{ flex: 1 }}
-                >
-                  <UndoOutlined style={{ marginRight: 6 }} />
-                  Restart
-                </button>
-              )}
-              <button
-                type="button"
-                className="apple-face-reg-secondary-btn"
-                onClick={() => handleTabChange('upload')}
-                style={{ flex: 1 }}
+          {/* Secondary actions */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            {cameraSamples.length > 0 && (
+              <Button
+                block
+                icon={<UndoOutlined />}
+                onClick={handleResetCameraPoses}
+                style={{ height: 44, borderRadius: 10, flex: 1 }}
               >
-                Upload photos
-              </button>
-            </div>
+                Restart
+              </Button>
+            )}
+            <Button
+              block
+              onClick={() => handleTabChange('upload')}
+              style={{ height: 44, borderRadius: 10, flex: 1 }}
+            >
+              Upload instead
+            </Button>
           </div>
 
-          {/* Captured Poses Strip */}
+          {/* Captured poses thumbnail strip */}
           {cameraSamples.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <Text strong style={{ fontSize: 13 }}>
                   {cameraSamples.length} of 5 poses captured
-                </span>
-                <span style={{ fontSize: 12, color: cameraSamples.length >= 3 ? '#16a34a' : '#64748b' }}>
-                  {cameraSamples.length >= 3 ? '✓ Ready to save' : 'Capture at least 3 poses'}
-                </span>
+                </Text>
+                <Text style={{ fontSize: 12, color: cameraSamples.length >= 3 ? '#16a34a' : '#8c8c8c' }}>
+                  {cameraSamples.length >= 3 ? '✓ Ready to save' : 'Capture at least 3'}
+                </Text>
               </div>
 
-              <div className="apple-face-reg-poses-strip">
+              <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch' }}>
                 {cameraSamples.map((sample) => (
-                  <div key={sample.id} className="apple-face-reg-pose-item">
-                    <img src={sample.previewUrl} alt={sample.label} />
-                    <span className="apple-face-reg-pose-check">
+                  <div
+                    key={sample.id}
+                    style={{ width: 60, height: 60, borderRadius: 10, overflow: 'hidden', position: 'relative', flexShrink: 0, border: '1.5px solid #16a34a', background: '#000' }}
+                  >
+                    <img src={sample.previewUrl} alt={sample.label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    <span style={{ position: 'absolute', bottom: 2, right: 2, width: 16, height: 16, borderRadius: '50%', background: '#16a34a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9 }}>
                       <CheckOutlined />
                     </span>
                   </div>
                 ))}
               </div>
 
-              {/* Completion Action */}
               {cameraSamples.length >= 3 && (
-                <div
-                  style={{
-                    marginTop: 14,
-                    background: '#f0fdf4',
-                    border: '1px solid #bbf7d0',
-                    borderRadius: 14,
-                    padding: '14px',
-                    textAlign: 'center',
-                  }}
+                <Button
+                  type="primary"
+                  size="large"
+                  block
+                  loading={submitting}
+                  disabled={submitting}
+                  onClick={() => handleSaveEnrollment(cameraSamples)}
+                  style={{ marginTop: 14, height: 50, borderRadius: 14, fontWeight: 600, fontSize: 16, background: '#16a34a', borderColor: '#16a34a' }}
                 >
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#16a34a' }}>
-                    ✓ {cameraSamples.length === 5 ? 'All photos captured' : 'Face reference ready'}
-                  </div>
-                  <div style={{ fontSize: 13, color: '#475569', marginTop: 2, marginBottom: 12 }}>
-                    Your biometric reference is ready to be saved.
-                  </div>
-                  <button
-                    type="button"
-                    className="apple-face-reg-primary-btn success"
-                    disabled={submitting}
-                    onClick={() => handleSaveEnrollment(cameraSamples)}
-                  >
-                    {submitting ? <LoadingOutlined /> : null}
-                    Save Face Reference
-                  </button>
-                </div>
+                  Save Face Reference
+                </Button>
               )}
             </div>
           )}
         </div>
       )}
 
-      {/* ─── Technical Details Disclosure (Progressive Disclosure) ─── */}
-      <div className="apple-face-reg-tech-details">
-        <div
-          onClick={() => setTechOpen(!techOpen)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') setTechOpen(!techOpen);
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            cursor: 'pointer',
-            fontSize: 13,
-            color: '#64748b',
-            userSelect: 'none',
-          }}
-        >
-          <span>Technical details</span>
-          {techOpen ? <DownOutlined style={{ fontSize: 11 }} /> : <RightOutlined style={{ fontSize: 11 }} />}
-        </div>
-
-        {techOpen && (
-          <div className="apple-face-reg-tech-content">
-            <div className="apple-face-reg-tech-row">
-              <span>Detection confidence</span>
-              <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                {liveFaceDetected ? `${Math.round(liveQuality * 100)}%` : 'N/A'}
-              </span>
+      {/* ─── Technical Details (antd Collapse — replaces custom accordion) ─── */}
+      <Collapse
+        ghost
+        style={{ marginTop: 24, borderTop: '1px solid #f0f0f0', paddingTop: 8 }}
+        items={[{
+          key: 'tech',
+          label: <Text type="secondary" style={{ fontSize: 13 }}>Technical details</Text>,
+          children: (
+            <div style={{ background: '#fafafa', borderRadius: 10, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: '#595959' }}>
+              {[
+                ['Detection confidence', liveFaceDetected ? `${Math.round(liveQuality * 100)}%` : 'N/A'],
+                ['Image format', lastDetectedFormat],
+                ['Converted format', 'JPEG (Standard RGB)'],
+                ['Template status', user?.face_enrolled ? 'Active' : 'Pending enrollment'],
+                ['Centroid', '1024-D Centroid'],
+                ['Model', '@vladmandic/human v3.2.0'],
+              ].map(([label, value]) => (
+                <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>{label}</span>
+                  <Text strong style={{ fontSize: 12, color: '#141414' }}>{value}</Text>
+                </div>
+              ))}
             </div>
-            <div className="apple-face-reg-tech-row">
-              <span>Image format</span>
-              <span style={{ fontWeight: 600, color: '#0f172a' }}>{lastDetectedFormat}</span>
-            </div>
-            <div className="apple-face-reg-tech-row">
-              <span>Converted format</span>
-              <span style={{ fontWeight: 600, color: '#0f172a' }}>JPEG (Standard RGB)</span>
-            </div>
-            <div className="apple-face-reg-tech-row">
-              <span>Template status</span>
-              <span style={{ fontWeight: 600, color: user?.face_enrolled ? '#16a34a' : '#64748b' }}>
-                {user?.face_enrolled ? 'Active' : 'Pending enrollment'}
-              </span>
-            </div>
-            <div className="apple-face-reg-tech-row">
-              <span>Centroid</span>
-              <span style={{ fontWeight: 600, color: '#0f172a' }}>1024-D Centroid</span>
-            </div>
-            <div className="apple-face-reg-tech-row">
-              <span>Model</span>
-              <span style={{ fontWeight: 600, color: '#0f172a' }}>@vladmandic/human v3.2.0</span>
-            </div>
-          </div>
-        )}
-      </div>
+          ),
+        }]}
+      />
     </div>
   );
 };

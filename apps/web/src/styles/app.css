@@ -3307,16 +3307,18 @@ html, body {
   background: #16a34a;
 }
 
-/* Live Camera Frame */
+/* Live Camera Frame
+   Height capped at clamp(180px,50vw,260px) — on a 375px phone that is
+   ~187px, leaving room for step header + dots + Capture button on screen
+   with zero scroll. GPU-composited via will-change for no-lag rendering. */
 .apple-face-reg-camera-box {
   position: relative;
   width: 100%;
-  height: 360px;
-  max-height: 55vh;
+  height: clamp(180px, 50vw, 260px);
   border-radius: 20px;
   overflow: hidden;
   background: #000000;
-  margin-bottom: 14px;
+  contain: layout style;
 }
 
 .apple-face-reg-video {
@@ -3325,6 +3327,8 @@ html, body {
   object-fit: cover;
   transform: scaleX(-1);
   display: block;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 /* Clean Face Guidance Frame (Subtle, Apple HIG style) */

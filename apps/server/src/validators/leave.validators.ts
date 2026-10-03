@@ -36,7 +36,7 @@ export const AllocateBalanceSchema = z.object({
 });
 
 export const CreateLeaveTypeSchema = z.object({
-  code: z.string().min(1).max(20).regex(/^[A-Z_]+$/, 'Code must be uppercase letters/underscores'),
+  code: z.string().min(1).max(30).regex(/^[A-Z_]+$/, 'Code must be uppercase letters and underscores only (e.g. ANNUAL_LEAVE)'),
   name: z.string().min(2).max(100),
   annual_quota: z.number().min(0).max(365),
   is_paid: z.boolean().default(false),

@@ -164,17 +164,19 @@ const EmployeeCard: React.FC<{
         </Button>
       </PermissionGate>
 
-      {currentUserId !== user.id && (
-        <Button
-          size="middle"
-          danger
-          icon={<DeleteOutlined />}
-          onClick={() => onRemove(user)}
-          style={{ borderRadius: 8 }}
-        >
-          Remove
-        </Button>
-      )}
+      <PermissionGate permission={PermissionKey.USER_DISABLE}>
+        {currentUserId !== user.id && (
+          <Button
+            size="middle"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => onRemove(user)}
+            style={{ borderRadius: 8 }}
+          >
+            Remove
+          </Button>
+        )}
+      </PermissionGate>
     </div>
   </Card>
 );
@@ -497,14 +499,16 @@ export const UsersPage: React.FC = () => {
           </PermissionGate>
 
           {currentUser?.id !== r.id && (
-            <Button
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={() => handleRemoveUser(r)}
-            >
-              Remove
-            </Button>
+            <PermissionGate permission={PermissionKey.USER_DISABLE}>
+              <Button
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => handleRemoveUser(r)}
+              >
+                Remove
+              </Button>
+            </PermissionGate>
           )}
         </Space>
       ),

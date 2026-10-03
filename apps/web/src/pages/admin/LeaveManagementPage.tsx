@@ -763,8 +763,29 @@ export const LeaveManagementPage: React.FC = () => {
       >
         <Form form={typeForm} layout="vertical" onFinish={handleSaveType}>
           {!editingType && (
-            <Form.Item name="code" label="Code" rules={[{ required: true }]}>
-              <Input placeholder="e.g. ANNUAL, SICK" />
+            <Form.Item
+              name="code"
+              label="Code"
+              rules={[
+                { required: true, message: 'Code is required' },
+                { max: 30, message: 'Code must be 30 characters or less' },
+                {
+                  pattern: /^[A-Z_]+$/,
+                  message: 'Only uppercase letters and underscores allowed (e.g. ANNUAL_LEAVE)',
+                },
+              ]}
+              extra="Use uppercase letters and underscores only — e.g. ANNUAL_LEAVE, SICK_LEAVE"
+            >
+              <Input
+                placeholder="e.g. ANNUAL_LEAVE, SICK_LEAVE"
+                onChange={(e) => {
+                  const sanitized = e.target.value
+                    .toUpperCase()
+                    .replace(/\s+/g, '_')
+                    .replace(/[^A-Z_]/g, '');
+                  typeForm.setFieldValue('code', sanitized);
+                }}
+              />
             </Form.Item>
           )}
           <Form.Item name="name" label="Name" rules={[{ required: true }]}>
