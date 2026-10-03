@@ -354,7 +354,7 @@ export const CheckOutPage: React.FC = () => {
               faceMatched={faceMatched}
               faceSimilarity={faceSimilarity}
               expectedName={user?.name}
-              expectedCode={user?.employee_code}
+              expectedCode={user?.employee_code || undefined}
               faceEnrolled={user?.face_enrolled}
             />
 

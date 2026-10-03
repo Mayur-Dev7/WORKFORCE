@@ -10,7 +10,7 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, permission }) => {
-  const { isAuthenticated, loading, hasPermission } = useAuth();
+  const { user, isAuthenticated, loading, hasPermission } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -24,6 +24,16 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, permis
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // If user has no company, redirect to /onboarding unless already there
+  if (!user?.company_id && location.pathname !== '/onboarding') {
+    return <Navigate to="/onboarding" replace />;
+  }
+
+  // If user already belongs to a company and tries to visit /onboarding, redirect to dashboard
+  if (user?.company_id && location.pathname === '/onboarding') {
+    return <Navigate to="/employee/dashboard" replace />;
   }
 
   if (permission && !hasPermission(permission)) {

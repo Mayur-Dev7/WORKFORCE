@@ -14,6 +14,8 @@ import {
   Tooltip,
   Avatar,
   Dropdown,
+  Modal,
+  message,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import {
@@ -35,6 +37,8 @@ import {
   RightOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  SettingOutlined,
+  ExportOutlined,
 } from '@ant-design/icons';
 
 import { useAuth } from '../context/AuthContext.js';
@@ -143,7 +147,7 @@ const SidebarContent: React.FC<{
 }> = ({ collapsed, onCollapse, onNav }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, hasPermission } = useAuth();
+  const { user, logout, leaveCompany, hasPermission } = useAuth();
 
   const [adminExpanded, setAdminExpanded] = useState(() =>
     location.pathname.startsWith('/admin')
@@ -180,6 +184,8 @@ const SidebarContent: React.FC<{
     adminItems.push({ key: '/admin/audit-logs', icon: <FileProtectOutlined />,      label: 'Audit Trail',       path: '/admin/audit-logs' });
   if (hasPermission(PermissionKey.LEAVE_READ_TEAM))
     adminItems.push({ key: '/admin/leave',      icon: <CalendarOutlined />,         label: 'Leave Management',  path: '/admin/leave'      });
+  if (hasPermission(PermissionKey.ROLE_READ) || user?.role_name === 'COMPANY_ADMIN')
+    adminItems.push({ key: '/admin/company-settings', icon: <SettingOutlined />,   label: 'Company Settings',  path: '/admin/company-settings' });
 
   // ── Dropdown for user chip ─────────────────────────────────────────────────
   const userMenu: MenuProps['items'] = [
@@ -194,6 +200,30 @@ const SidebarContent: React.FC<{
       disabled: true,
     },
     { type: 'divider' },
+    {
+      key: 'leave_company',
+      icon: <ExportOutlined />,
+      label: 'Leave Company',
+      onClick: () => {
+        Modal.confirm({
+          title: 'Leave Company',
+          content: 'Are you sure you want to leave your company? Pending leaves will be canceled, active sessions closed, and face enrollment removed.',
+          okText: 'Yes, Leave',
+          okType: 'danger',
+          onOk: async () => {
+            try {
+              if (leaveCompany) {
+                await leaveCompany();
+              }
+              message.success('You have left the company.');
+              navigate('/onboarding');
+            } catch (err: any) {
+              message.error(err.response?.data?.error?.message || 'Failed to leave company');
+            }
+          },
+        });
+      },
+    },
     {
       key: 'logout',
       icon: <LogoutOutlined />,

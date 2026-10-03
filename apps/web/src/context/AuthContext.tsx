@@ -11,6 +11,7 @@ interface AuthContextType {
   loginWithGoogle?: (onLinkPasswordRequired?: (email: string) => Promise<string>) => Promise<User>;
 
   logout: () => Promise<void>;
+  leaveCompany?: () => Promise<void>;
   hasPermission: (permission: PermissionKey) => boolean;
   hasAnyPermission: (permissions: PermissionKey[]) => boolean;
   refreshUser: () => Promise<User | null>;
@@ -122,6 +123,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const leaveCompany = async () => {
+    await api.post('/companies/leave');
+    await refreshUser();
+  };
+
   const hasPermission = (permission: PermissionKey): boolean => {
     if (!user || !user.permissions) return false;
     return user.permissions.includes(permission);
@@ -141,6 +147,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         loginWithGoogle,
         logout,
+        leaveCompany,
         hasPermission,
         hasAnyPermission,
         refreshUser,

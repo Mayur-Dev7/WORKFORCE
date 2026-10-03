@@ -15,6 +15,8 @@ import {
   Typography,
   Pagination,
   Empty,
+  Tabs,
+  Badge,
 } from 'antd';
 import {
   UserAddOutlined,
@@ -24,9 +26,13 @@ import {
   TeamOutlined,
   EnvironmentOutlined,
   IdcardOutlined,
+  MailOutlined,
+  DeleteOutlined,
+  SendOutlined,
+  CloseCircleOutlined,
 } from '@ant-design/icons';
 import { api } from '../../services/api.js';
-import { User, Office, Department, Role, ApiResponse, PermissionKey } from '@workforce/shared';
+import { User, Office, Department, Role, ApiResponse, PermissionKey, Invitation } from '@workforce/shared';
 import { PermissionGate } from '../../components/common/PermissionGate.js';
 import { useIsMobile } from '../../hooks/useMediaQuery.js';
 import { useAuth } from '../../context/AuthContext.js';
@@ -37,9 +43,11 @@ const { Title, Text, Paragraph } = Typography;
 /** Mobile Card for displaying an employee cleanly on small viewports */
 const EmployeeCard: React.FC<{
   user: User;
+  currentUserId?: string;
   onEdit: (user: User) => void;
   onEnrollFace: (userId: string) => void;
-}> = ({ user, onEdit, onEnrollFace }) => (
+  onRemove: (user: User) => void;
+}> = ({ user, currentUserId, onEdit, onEnrollFace, onRemove }) => (
   <Card
     size="small"
     style={{
@@ -107,14 +115,14 @@ const EmployeeCard: React.FC<{
         <Text type="secondary" style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.5px' }}>
           DEPARTMENT
         </Text>
-        <div style={{ fontSize: 12, color: '#374151', marginTop: 2 }}>
-          {user.department_name || 'N/A'}
+        <div style={{ marginTop: 2 }}>
+          <Text style={{ fontSize: 12 }}>{user.department_name || 'None'}</Text>
         </div>
       </div>
 
       <div>
         <Text type="secondary" style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.5px' }}>
-          BIOMETRIC FACE
+          FACE ENROLLMENT
         </Text>
         <div style={{ marginTop: 2 }}>
           {user.face_enrolled ? (
@@ -130,8 +138,8 @@ const EmployeeCard: React.FC<{
       </div>
     </div>
 
-    {/* Action Buttons Row */}
-    <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+    {/* Mobile Card Actions */}
+    <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
       <PermissionGate permission={PermissionKey.USER_UPDATE}>
         <Button
           size="middle"
@@ -155,6 +163,18 @@ const EmployeeCard: React.FC<{
           {user.face_enrolled ? 'Replace Face' : 'Enroll Face'}
         </Button>
       </PermissionGate>
+
+      {currentUserId !== user.id && (
+        <Button
+          size="middle"
+          danger
+          icon={<DeleteOutlined />}
+          onClick={() => onRemove(user)}
+          style={{ borderRadius: 8 }}
+        >
+          Remove
+        </Button>
+      )}
     </div>
   </Card>
 );
@@ -165,20 +185,26 @@ export const UsersPage: React.FC = () => {
   const { user: currentUser, refreshUser } = useAuth();
   const { forceRefreshOffice } = useLocationWarmup();
 
+  const [activeTab, setActiveTab] = useState<'employees' | 'invitations'>('employees');
   const [users, setUsers] = useState<User[]>([]);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [offices, setOffices] = useState<Office[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingInvitations, setLoadingInvitations] = useState(false);
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState<string | undefined>();
   const [mobilePage, setMobilePage] = useState(1);
   const mobilePageSize = 10;
 
-  // Create Modal
+  // Modals
   const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [inviteModalVisible, setInviteModalVisible] = useState(false);
   const [createForm] = Form.useForm();
+  const [inviteForm] = Form.useForm();
   const [creating, setCreating] = useState(false);
+  const [inviting, setInviting] = useState(false);
 
   // Edit Modal
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -186,19 +212,44 @@ export const UsersPage: React.FC = () => {
   const [editForm] = Form.useForm();
   const [updating, setUpdating] = useState(false);
 
+  // Filter assignable roles: no SUPER_ADMIN; only COMPANY_ADMIN can assign COMPANY_ADMIN
+  const assignableRoles = useMemo(() => {
+    return roles.filter((r) => {
+      if (r.name === 'SUPER_ADMIN') return false;
+      if (r.name === 'COMPANY_ADMIN' && currentUser?.role_name !== 'COMPANY_ADMIN') return false;
+      return true;
+    });
+  }, [roles, currentUser]);
+
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const params: any = {};
-      if (search) params.search = search;
-      if (filterRole) params.roleId = filterRole;
-
-      const res = await api.get<ApiResponse<User[]>>('/users', { params });
+      const res = await api.get<ApiResponse<User[]>>('/users', {
+        params: {
+          search: search || undefined,
+          roleId: filterRole || undefined,
+        },
+      });
       setUsers(res.data.data);
-    } catch {
-      message.error('Failed to load employees list');
+    } catch (err) {
+      console.error(err);
+      message.error('Failed to load employees');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchInvitations = async () => {
+    setLoadingInvitations(true);
+    try {
+      const res = await api.get<ApiResponse<Invitation[]>>('/invitations');
+      if (res.data.success && res.data.data) {
+        setInvitations(res.data.data);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingInvitations(false);
     }
   };
 
@@ -219,6 +270,7 @@ export const UsersPage: React.FC = () => {
 
   useEffect(() => {
     fetchUsers();
+    fetchInvitations();
     fetchMeta();
   }, [filterRole]);
 
@@ -271,6 +323,59 @@ export const UsersPage: React.FC = () => {
     }
   };
 
+  const handleInvite = async (values: any) => {
+    setInviting(true);
+    try {
+      await api.post('/invitations', values);
+      message.success(`Invitation sent to ${values.email}`);
+      setInviteModalVisible(false);
+      inviteForm.resetFields();
+      fetchInvitations();
+    } catch (err: any) {
+      message.error(err.response?.data?.error?.message || 'Failed to send invitation');
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const handleRevokeInvitation = async (invitationId: string) => {
+    try {
+      await api.delete(`/invitations/${invitationId}`);
+      message.info('Invitation revoked');
+      fetchInvitations();
+    } catch (err: any) {
+      message.error(err.response?.data?.error?.message || 'Failed to revoke invitation');
+    }
+  };
+
+  const handleRemoveUser = (targetUser: User) => {
+    Modal.confirm({
+      title: `Remove ${targetUser.name} from company?`,
+      content: (
+        <div>
+          <p>This action will immediately:</p>
+          <ul>
+            <li>Detach the employee from this company.</li>
+            <li>Cancel any pending leave requests.</li>
+            <li>Safely auto-close any open attendance sessions.</li>
+            <li>Delete their face biometric registration.</li>
+            <li>Revoke their active sessions and tokens immediately.</li>
+          </ul>
+        </div>
+      ),
+      okText: 'Yes, Remove Employee',
+      okType: 'danger',
+      onOk: async () => {
+        try {
+          await api.post(`/users/${targetUser.id}/remove`);
+          message.success(`${targetUser.name} has been removed from the company`);
+          fetchUsers();
+        } catch (err: any) {
+          message.error(err.response?.data?.error?.message || 'Failed to remove employee');
+        }
+      },
+    });
+  };
 
   const handleEdit = (user: User) => {
     setEditingUser(user);
@@ -390,10 +495,82 @@ export const UsersPage: React.FC = () => {
               {r.face_enrolled ? 'Replace Face' : 'Enroll Face'}
             </Button>
           </PermissionGate>
+
+          {currentUser?.id !== r.id && (
+            <Button
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => handleRemoveUser(r)}
+            >
+              Remove
+            </Button>
+          )}
         </Space>
       ),
     },
   ];
+
+  const invitationColumns = [
+    {
+      title: 'Email Address',
+      dataIndex: 'email',
+      key: 'email',
+      render: (val: string) => <Text strong>{val}</Text>,
+    },
+    {
+      title: 'Invited Role',
+      dataIndex: 'role_name',
+      key: 'role_name',
+      render: (val: string) => <Tag color="purple">{val}</Tag>,
+    },
+    {
+      title: 'Office',
+      dataIndex: 'office_name',
+      key: 'office_name',
+      render: (val: string) => val ? <Tag color="blue">{val}</Tag> : <Text type="secondary">Company Default</Text>,
+    },
+    {
+      title: 'Department',
+      dataIndex: 'department_name',
+      key: 'department_name',
+      render: (val: string | null) => val || <Text type="secondary">N/A</Text>,
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      render: (val: string) => {
+        if (val === 'pending') return <Tag color="orange">Pending</Tag>;
+        if (val === 'accepted') return <Tag color="green">Accepted</Tag>;
+        return <Tag color="default">{val}</Tag>;
+      },
+    },
+    {
+      title: 'Expires At',
+      dataIndex: 'expires_at',
+      key: 'expires_at',
+      render: (val: string) => new Date(val).toLocaleDateString(),
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      render: (_: any, inv: Invitation) => (
+        inv.status === 'pending' ? (
+          <Button
+            size="small"
+            danger
+            icon={<CloseCircleOutlined />}
+            onClick={() => handleRevokeInvitation(inv.id)}
+          >
+            Revoke
+          </Button>
+        ) : null
+      ),
+    },
+  ];
+
+  const pendingCount = invitations.filter((i) => i.status === 'pending').length;
 
   return (
     <div style={{ maxWidth: 1280, margin: '0 auto', paddingBottom: 24 }}>
@@ -414,115 +591,235 @@ export const UsersPage: React.FC = () => {
             Staff & Employee Directory
           </Title>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            Manage employee credentials, biometric profiles, and office locations
+            Manage employee credentials, invite members by email, and configure office assignments
           </Text>
         </div>
 
-        <PermissionGate permission={PermissionKey.USER_CREATE}>
-          <Button
-            type="primary"
-            icon={<UserAddOutlined />}
-            onClick={() => setCreateModalVisible(true)}
-            size="middle"
-            style={{ borderRadius: 8, width: isMobile ? '100%' : 'auto' }}
-          >
-            New Employee
-          </Button>
-        </PermissionGate>
+        <Space wrap>
+          <PermissionGate permission={PermissionKey.USER_CREATE}>
+            <Button
+              type="primary"
+              icon={<SendOutlined />}
+              onClick={() => setInviteModalVisible(true)}
+              size="middle"
+              style={{ borderRadius: 8 }}
+            >
+              Invite Employee
+            </Button>
+            <Button
+              icon={<UserAddOutlined />}
+              onClick={() => setCreateModalVisible(true)}
+              size="middle"
+              style={{ borderRadius: 8 }}
+            >
+              Add Manually
+            </Button>
+          </PermissionGate>
+        </Space>
       </div>
 
-      {/* ── Filter Bar ── */}
-      <Card
-        size="small"
-        style={{ borderRadius: 12, marginBottom: 16 }}
-        styles={{ body: { padding: '12px 14px' } }}
-      >
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <Input
-            placeholder="Search by name, code, or email..."
-            prefix={<SearchOutlined />}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onPressEnter={fetchUsers}
-            allowClear
-            style={{ flex: isMobile ? '1 1 100%' : '1 1 260px' }}
-          />
+      {/* Tabs: Active Employees vs Invitations */}
+      <Tabs
+        activeKey={activeTab}
+        onChange={(k) => setActiveTab(k as any)}
+        items={[
+          {
+            key: 'employees',
+            label: `Employees (${users.length})`,
+            children: (
+              <>
+                {/* ── Filter Bar ── */}
+                <Card
+                  size="small"
+                  style={{ borderRadius: 12, marginBottom: 16 }}
+                  styles={{ body: { padding: '12px 14px' } }}
+                >
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <Input
+                      placeholder="Search by name, code, or email..."
+                      prefix={<SearchOutlined />}
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      onPressEnter={fetchUsers}
+                      allowClear
+                      style={{ flex: isMobile ? '1 1 100%' : '1 1 260px' }}
+                    />
 
-          <Select
-            placeholder="Filter by Role"
-            allowClear
-            value={filterRole}
-            onChange={setFilterRole}
-            style={{ flex: isMobile ? '1 1 100%' : '0 0 180px' }}
-          >
-            {roles.map((r) => (
-              <Select.Option key={r.id} value={r.id}>
-                {r.name}
-              </Select.Option>
-            ))}
-          </Select>
+                    <Select
+                      placeholder="Filter by Role"
+                      allowClear
+                      value={filterRole}
+                      onChange={setFilterRole}
+                      style={{ flex: isMobile ? '1 1 100%' : '0 0 180px' }}
+                    >
+                      {assignableRoles.map((r) => (
+                        <Select.Option key={r.id} value={r.id}>
+                          {r.name}
+                        </Select.Option>
+                      ))}
+                    </Select>
 
-          <Button
-            type="primary"
-            onClick={fetchUsers}
-            loading={loading}
-            style={{ width: isMobile ? '100%' : 'auto', borderRadius: 8 }}
-          >
-            Apply Filters
-          </Button>
-        </div>
-      </Card>
+                    <Button
+                      type="primary"
+                      onClick={fetchUsers}
+                      loading={loading}
+                      style={{ width: isMobile ? '100%' : 'auto', borderRadius: 8 }}
+                    >
+                      Apply Filters
+                    </Button>
+                  </div>
+                </Card>
 
-      {/* ── Mobile View: Employee Touch Cards ── */}
-      <div className="employee-card-list">
-        {users.length === 0 && !loading ? (
-          <Card style={{ borderRadius: 12, textAlign: 'center', padding: '24px 0' }}>
-            <Empty description="No employees found" />
-          </Card>
-        ) : (
-          <>
-            {paginatedMobileUsers.map((user) => (
-              <EmployeeCard
-                key={user.id}
-                user={user}
-                onEdit={handleEdit}
-                onEnrollFace={(id) => navigate(`/admin/users/${id}/face-enrollment`)}
-              />
-            ))}
+                {/* ── Mobile View: Employee Touch Cards ── */}
+                <div className="employee-card-list">
+                  {users.length === 0 && !loading ? (
+                    <Card style={{ borderRadius: 12, textAlign: 'center', padding: '24px 0' }}>
+                      <Empty description="No employees found" />
+                    </Card>
+                  ) : (
+                    <>
+                      {paginatedMobileUsers.map((u) => (
+                        <EmployeeCard
+                          key={u.id}
+                          user={u}
+                          currentUserId={currentUser?.id}
+                          onEdit={handleEdit}
+                          onEnrollFace={(id) => navigate(`/admin/users/${id}/face-enrollment`)}
+                          onRemove={handleRemoveUser}
+                        />
+                      ))}
 
-            {users.length > mobilePageSize && (
-              <div style={{ textAlign: 'center', marginTop: 16 }}>
-                <Pagination
-                  simple
-                  current={mobilePage}
-                  pageSize={mobilePageSize}
-                  total={users.length}
-                  onChange={(page) => setMobilePage(page)}
+                      {users.length > mobilePageSize && (
+                        <div style={{ textAlign: 'center', marginTop: 16 }}>
+                          <Pagination
+                            simple
+                            current={mobilePage}
+                            pageSize={mobilePageSize}
+                            total={users.length}
+                            onChange={(page) => setMobilePage(page)}
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* ── Desktop View: Table ── */}
+                <div className="employee-table-desktop">
+                  <Card style={{ borderRadius: 12 }} styles={{ body: { padding: '16px' } }}>
+                    <Table
+                      dataSource={users}
+                      columns={columns}
+                      rowKey="id"
+                      loading={loading}
+                      scroll={{ x: 850 }}
+                      pagination={{ pageSize: 10 }}
+                      locale={{ emptyText: <Empty description="No employees found" /> }}
+                    />
+                  </Card>
+                </div>
+              </>
+            ),
+          },
+          {
+            key: 'invitations',
+            label: (
+              <span>
+                Pending Invitations <Badge count={pendingCount} offset={[6, -2]} />
+              </span>
+            ),
+            children: (
+              <Card style={{ borderRadius: 12 }} styles={{ body: { padding: '16px' } }}>
+                <Table
+                  dataSource={invitations}
+                  columns={invitationColumns}
+                  rowKey="id"
+                  loading={loadingInvitations}
+                  scroll={{ x: 800 }}
+                  pagination={{ pageSize: 10 }}
+                  locale={{ emptyText: <Empty description="No invitations sent yet" /> }}
                 />
-              </div>
-            )}
-          </>
-        )}
-      </div>
+              </Card>
+            ),
+          },
+        ]}
+      />
 
-      {/* ── Desktop View: Table ── */}
-      <div className="employee-table-desktop">
-        <Card style={{ borderRadius: 12 }} styles={{ body: { padding: '16px' } }}>
-          <Table
-            dataSource={users}
-            columns={columns}
-            rowKey="id"
-            loading={loading}
-            scroll={{ x: 850 }}
-            pagination={{ pageSize: 10 }}
-            locale={{ emptyText: <Empty description="No employees found" /> }}
-          />
-        </Card>
-      </div>
-
-      {/* Create Modal */}
+      {/* Invite Modal */}
       <Modal
-        title="Create New Employee"
+        title="Invite Employee via Office Email"
+        open={inviteModalVisible}
+        onCancel={() => setInviteModalVisible(false)}
+        footer={null}
+        destroyOnClose
+        centered
+        width={isMobile ? '94vw' : 500}
+      >
+        <Form form={inviteForm} layout="vertical" onFinish={handleInvite}>
+          <Form.Item
+            name="email"
+            label="Corporate / Work Email"
+            rules={[{ required: true, type: 'email', message: 'Valid email required' }]}
+            help="When this employee signs in with Google using this email, they will automatically join your company."
+          >
+            <Input placeholder="e.g. employee@company.com" size="large" />
+          </Form.Item>
+
+          <Form.Item
+            name="role_id"
+            label="Assigned Role"
+            rules={[{ required: true, message: 'Please select a role' }]}
+          >
+            <Select placeholder="Select role" size="large">
+              {assignableRoles.map((r) => (
+                <Select.Option key={r.id} value={r.id}>
+                  {r.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item name="office_id" label="Office Location (Optional)">
+            <Select placeholder="Select office (or default to primary)" allowClear size="large">
+              {offices.map((o) => (
+                <Select.Option key={o.id} value={o.id}>
+                  {o.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item name="department_id" label="Department (Optional)">
+            <Select placeholder="Select department" allowClear size="large">
+              {departments.map((d) => (
+                <Select.Option key={d.id} value={d.id}>
+                  {d.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <Button onClick={() => setInviteModalVisible(false)} size="large" style={{ flex: 1 }}>
+              Cancel
+            </Button>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={inviting}
+              size="large"
+              icon={<SendOutlined />}
+              style={{ flex: 1.5 }}
+            >
+              Send Invitation
+            </Button>
+          </div>
+        </Form>
+      </Modal>
+
+      {/* Manual Create Modal */}
+      <Modal
+        title="Create New Employee (Manual)"
         open={createModalVisible}
         onCancel={() => setCreateModalVisible(false)}
         footer={null}
@@ -577,7 +874,7 @@ export const UsersPage: React.FC = () => {
 
           <Form.Item name="role_id" label="Role & Permissions" rules={[{ required: true }]}>
             <Select placeholder="Select role" size="large">
-              {roles.map((r) => (
+              {assignableRoles.map((r) => (
                 <Select.Option key={r.id} value={r.id}>
                   {r.name}
                 </Select.Option>
@@ -651,7 +948,7 @@ export const UsersPage: React.FC = () => {
 
           <Form.Item name="role_id" label="Role">
             <Select size="large">
-              {roles.map((r) => (
+              {assignableRoles.map((r) => (
                 <Select.Option key={r.id} value={r.id}>
                   {r.name}
                 </Select.Option>
@@ -686,3 +983,4 @@ export const UsersPage: React.FC = () => {
     </div>
   );
 };
+export default UsersPage;

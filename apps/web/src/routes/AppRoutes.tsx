@@ -21,6 +21,8 @@ import { AuditLogsPage } from '../pages/admin/AuditLogsPage.js';
 import { LeaveManagementPage } from '../pages/admin/LeaveManagementPage.js';
 import { HolidaysPage } from '../pages/admin/HolidaysPage.js';
 import { ShiftsPage } from '../pages/admin/ShiftsPage.js';
+import { OnboardingPage } from '../pages/onboarding/OnboardingPage.js';
+import { CompanySettingsPage } from '../pages/admin/CompanySettingsPage.js';
 import { PermissionKey } from '@workforce/shared';
 import { useAuth } from '../context/AuthContext.js';
 
@@ -36,6 +38,14 @@ export const AppRoutes: React.FC = () => {
       <Route
         path="/forgot-password"
         element={<ForgotPasswordPage />}
+      />
+      <Route
+        path="/onboarding"
+        element={
+          <ProtectedRoute>
+            <OnboardingPage />
+          </ProtectedRoute>
+        }
       />
 
 
@@ -171,6 +181,14 @@ export const AppRoutes: React.FC = () => {
           element={
             <ProtectedRoute permission={PermissionKey.SHIFT_READ}>
               <ShiftsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/company-settings"
+          element={
+            <ProtectedRoute permission={PermissionKey.ROLE_READ}>
+              <CompanySettingsPage />
             </ProtectedRoute>
           }
         />
