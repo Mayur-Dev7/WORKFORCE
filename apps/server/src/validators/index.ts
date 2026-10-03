@@ -58,7 +58,7 @@ export const EnrollFaceSchema = z.object({
 });
 
 export const CreateOfficeSchema = z.object({
-  company_id: z.string().uuid('Invalid company UUID'),
+  company_id: z.string().uuid('Invalid company UUID').optional(),
   name: z.string().min(2, 'Office name is required'),
   address: z.string().nullable().optional(),
   latitude: z.number().min(-90).max(90),
@@ -78,7 +78,7 @@ export const UpdateOfficeSchema = z.object({
 });
 
 export const CreateDepartmentSchema = z.object({
-  company_id: z.string().uuid('Invalid company UUID'),
+  company_id: z.string().uuid('Invalid company UUID').optional(),
   name: z.string().min(2, 'Department name is required'),
 });
 

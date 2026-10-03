@@ -3,7 +3,7 @@ import { rolesRepository } from '../repositories/roles.repository.js';
 import { permissionsRepository } from '../repositories/permissions.repository.js';
 import { auditLogsRepository } from '../repositories/auditLogs.repository.js';
 import { UpdateRolePermissionsSchema } from '../validators/index.js';
-import { AuditAction } from '@workforce/shared';
+import { AuditAction, RoleName, ErrorCode } from '@workforce/shared';
 
 export class RolesController {
   async getRoles(_req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -32,6 +32,26 @@ export class RolesController {
 
   async updateRolePermissions(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const role = await rolesRepository.findById(req.params.id);
+      if (!role) {
+        res.status(404).json({
+          success: false,
+          error: { code: ErrorCode.VALIDATION_ERROR, message: 'Role not found' },
+        });
+        return;
+      }
+
+      if (role.name === RoleName.COMPANY_ADMIN || (role.name as string) === 'SUPER_ADMIN') {
+        res.status(403).json({
+          success: false,
+          error: {
+            code: ErrorCode.PERMISSION_DENIED,
+            message: 'Cannot modify permissions for the superior Company Admin role',
+          },
+        });
+        return;
+      }
+
       const validated = UpdateRolePermissionsSchema.parse(req.body);
       await rolesRepository.updateRolePermissions(req.params.id, validated.permissions);
 

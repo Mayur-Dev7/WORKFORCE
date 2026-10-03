@@ -191,7 +191,7 @@ const OfficeCard: React.FC<{
 
 export const OfficesPage: React.FC = () => {
   const isMobile = useIsMobile(768);
-  const { refreshUser } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { forceRefreshOffice } = useLocationWarmup();
   const [offices, setOffices] = useState<Office[]>([]);
   const [loading, setLoading] = useState(false);
@@ -290,10 +290,10 @@ export const OfficesPage: React.FC = () => {
   const handleCreate = async (values: any) => {
     setCreating(true);
     try {
-      const companyId = offices[0]?.company_id || '00000000-0000-0000-0000-000000000000';
+      const companyId = user?.company_id || offices[0]?.company_id;
       const res = await api.post<ApiResponse<Office>>('/offices', {
         ...values,
-        company_id: companyId,
+        ...(companyId ? { company_id: companyId } : {}),
       });
       message.success(
         values.apply_to_all_employees

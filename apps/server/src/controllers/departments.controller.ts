@@ -19,14 +19,25 @@ export class DepartmentsController {
   async create(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const validated = CreateDepartmentSchema.parse(req.body);
-      if (req.user?.companyId && validated.company_id !== req.user.companyId) {
+      const companyId = req.user?.companyId || validated.company_id;
+      if (!companyId) {
+        res.status(400).json({
+          success: false,
+          error: { code: ErrorCode.VALIDATION_ERROR, message: 'company_id is required' },
+        });
+        return;
+      }
+      if (req.user?.companyId && validated.company_id && validated.company_id !== req.user.companyId) {
         res.status(403).json({
           success: false,
           error: { code: ErrorCode.CROSS_TENANT_FORBIDDEN, message: 'Cannot create departments in another company' },
         });
         return;
       }
-      const department = await departmentsService.create(validated);
+      const department = await departmentsService.create({
+        ...validated,
+        company_id: companyId,
+      });
       res.status(201).json({
         success: true,
         data: department,

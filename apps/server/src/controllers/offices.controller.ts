@@ -38,14 +38,25 @@ export class OfficesController {
   async create(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const validated = CreateOfficeSchema.parse(req.body);
-      if (req.user?.companyId && validated.company_id !== req.user.companyId) {
+      const companyId = req.user?.companyId || validated.company_id;
+      if (!companyId) {
+        res.status(400).json({
+          success: false,
+          error: { code: ErrorCode.VALIDATION_ERROR, message: 'company_id is required' },
+        });
+        return;
+      }
+      if (req.user?.companyId && validated.company_id && validated.company_id !== req.user.companyId) {
         res.status(403).json({
           success: false,
           error: { code: ErrorCode.CROSS_TENANT_FORBIDDEN, message: 'Cannot create offices in another company' },
         });
         return;
       }
-      const office = await officesService.create(req.user!.userId, validated);
+      const office = await officesService.create(req.user!.userId, {
+        ...validated,
+        company_id: companyId,
+      });
       res.status(201).json({
         success: true,
         data: office,

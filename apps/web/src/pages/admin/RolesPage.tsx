@@ -27,7 +27,7 @@ const RoleCard: React.FC<{
   onEdit: (role: Role) => void;
 }> = ({ role, onEdit }) => {
   const perms = role.permissions || [];
-  const isSuperAdmin = role.name === 'SUPER_ADMIN';
+  const isCompanyAdmin = role.name === 'COMPANY_ADMIN';
 
   return (
     <Card
@@ -42,25 +42,32 @@ const RoleCard: React.FC<{
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
         <div>
-          <Tag color="purple" style={{ fontSize: 13, padding: '2px 8px', margin: 0, fontWeight: 600 }}>
-            {role.name}
-          </Tag>
-          {role.description && (
-            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
-              {role.description}
-            </div>
-          )}
+          <Space>
+            <Tag color="purple" style={{ fontSize: 13, padding: '2px 8px', margin: 0, fontWeight: 600 }}>
+              {role.name}
+            </Tag>
+            {isCompanyAdmin && (
+              <Tag color="gold" style={{ fontSize: 11, fontWeight: 600 }}>
+                Superior Role
+              </Tag>
+            )}
+          </Space>
+          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+            {isCompanyAdmin
+              ? 'Superior administrator with full system capabilities for the company'
+              : role.description}
+          </div>
         </div>
 
         <PermissionGate permission={PermissionKey.ROLE_UPDATE}>
           <Button
             size="middle"
             icon={<EditOutlined />}
-            disabled={isSuperAdmin}
+            disabled={isCompanyAdmin}
             onClick={() => onEdit(role)}
             style={{ borderRadius: 8 }}
           >
-            Edit
+            {isCompanyAdmin ? 'Full Access' : 'Edit'}
           </Button>
         </PermissionGate>
       </div>
@@ -108,7 +115,8 @@ export const RolesPage: React.FC = () => {
         api.get<ApiResponse<Role[]>>('/roles'),
         api.get<ApiResponse<Permission[]>>('/roles/permissions'),
       ]);
-      setRoles(rolesRes.data.data);
+      const companyRoles = (rolesRes.data.data || []).filter((r) => r.name !== 'SUPER_ADMIN');
+      setRoles(companyRoles);
       setAllPermissions(permsRes.data.data);
     } catch {
       message.error('Failed to load RBAC roles & permissions');
@@ -149,12 +157,21 @@ export const RolesPage: React.FC = () => {
       title: 'Role Name',
       dataIndex: 'name',
       key: 'name',
-      render: (val: string) => <Tag color="purple">{val}</Tag>,
+      render: (val: string) => (
+        <Space>
+          <Tag color="purple">{val}</Tag>
+          {val === 'COMPANY_ADMIN' && <Tag color="gold">Superior Role</Tag>}
+        </Space>
+      ),
     },
     {
       title: 'Description',
       dataIndex: 'description',
       key: 'description',
+      render: (desc: string, r: Role) =>
+        r.name === 'COMPANY_ADMIN'
+          ? 'Superior administrator with full system capabilities for the company'
+          : desc,
     },
     {
       title: 'Assigned Permissions',
@@ -181,10 +198,10 @@ export const RolesPage: React.FC = () => {
           <Button
             size="small"
             icon={<EditOutlined />}
-            disabled={r.name === 'SUPER_ADMIN'}
+            disabled={r.name === 'COMPANY_ADMIN'}
             onClick={() => handleOpenEdit(r)}
           >
-            Edit Permissions
+            {r.name === 'COMPANY_ADMIN' ? 'Full Access' : 'Edit Permissions'}
           </Button>
         </PermissionGate>
       ),

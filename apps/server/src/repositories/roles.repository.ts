@@ -21,8 +21,16 @@ export class RolesRepository {
       FROM roles r
       LEFT JOIN role_permissions rp ON r.id = rp.role_id
       LEFT JOIN permissions p ON rp.permission_id = p.id
+      WHERE r.name != 'SUPER_ADMIN'
       GROUP BY r.id
-      ORDER BY r.name ASC
+      ORDER BY 
+        CASE r.name 
+          WHEN 'COMPANY_ADMIN' THEN 1
+          WHEN 'HR_ADMIN' THEN 2
+          WHEN 'MANAGER' THEN 3
+          WHEN 'EMPLOYEE' THEN 4
+          ELSE 5
+        END ASC
     `;
     const res = await pool.query<RoleRow>(query);
     return res.rows;

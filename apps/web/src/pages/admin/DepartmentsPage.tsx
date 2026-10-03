@@ -5,6 +5,7 @@ import { api } from '../../services/api.js';
 import { Department, ApiResponse, PermissionKey } from '@workforce/shared';
 import { PermissionGate } from '../../components/common/PermissionGate.js';
 import { useIsMobile } from '../../hooks/useMediaQuery.js';
+import { useAuth } from '../../context/AuthContext.js';
 
 const { Title, Text } = Typography;
 
@@ -48,6 +49,7 @@ const DepartmentCard: React.FC<{
 );
 
 export const DepartmentsPage: React.FC = () => {
+  const { user } = useAuth();
   const isMobile = useIsMobile(768);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(false);
@@ -91,8 +93,11 @@ export const DepartmentsPage: React.FC = () => {
         await api.patch(`/departments/${editingDept.id}`, values);
         message.success('Department updated successfully');
       } else {
-        const companyId = departments[0]?.company_id || '00000000-0000-0000-0000-000000000000';
-        await api.post('/departments', { company_id: companyId, name: values.name });
+        const companyId = user?.company_id || departments[0]?.company_id;
+        await api.post('/departments', {
+          ...(companyId ? { company_id: companyId } : {}),
+          name: values.name,
+        });
         message.success('Department created successfully');
       }
       setModalVisible(false);

@@ -279,7 +279,7 @@ export const UsersPage: React.FC = () => {
   const handleCreate = async (values: any) => {
     setCreating(true);
     try {
-      const defaultCompanyId = offices[0]?.company_id;
+      const defaultCompanyId = currentUser?.company_id || offices[0]?.company_id;
       const res = await api.post<ApiResponse<User>>('/users', {
         ...values,
         company_id: defaultCompanyId,
