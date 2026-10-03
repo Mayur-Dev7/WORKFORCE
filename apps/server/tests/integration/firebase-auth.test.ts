@@ -16,8 +16,24 @@ describe('Firebase Auth Integration & Unit Tests', () => {
     process.env.AUTH_PROVIDER = 'dual';
     app = createApp();
 
-    // Fetch existing seeded user EMP-101 for testing
+    // Fetch existing seeded user EMP-101 for testing (or by email alex@workforce.com)
     testUserRow = await usersRepository.findByEmployeeCode('EMP-101');
+    if (!testUserRow) {
+      testUserRow = await usersRepository.findByEmail('alex@workforce.com');
+      if (testUserRow) {
+        const compRes = await pool.query(
+          `SELECT c.id as company_id, o.id as office_id, (SELECT id FROM roles WHERE name = 'EMPLOYEE') as role_id
+           FROM companies c
+           JOIN offices o ON o.company_id = c.id
+           LIMIT 1`
+        );
+        await pool.query(
+          `UPDATE users SET employee_code = 'EMP-101', company_id = $1, office_id = $2, role_id = $3, is_active = true WHERE id = $4`,
+          [compRes.rows[0].company_id, compRes.rows[0].office_id, compRes.rows[0].role_id, testUserRow.id]
+        );
+        testUserRow = await usersRepository.findByEmail('alex@workforce.com');
+      }
+    }
     expect(testUserRow).toBeDefined();
 
     // Link test user with a known firebase_uid
@@ -133,14 +149,20 @@ describe('Firebase Auth Integration & Unit Tests', () => {
     });
 
     it('automatically links unlinked provisioned employee when signing in with verified Google email', async () => {
-      // Set test user's firebase_uid to NULL to simulate an unlinked provisioned employee
-      await pool.query(`UPDATE users SET firebase_uid = NULL, auth_provider = 'legacy' WHERE id = $1`, [testUserRow.id]);
+      // Set test user's firebase_uid to NULL and approve linking
+      await pool.query(
+        `UPDATE users SET firebase_uid = NULL, auth_provider = 'legacy', approved_for_firebase_link = true WHERE id = $1`,
+        [testUserRow.id]
+      );
 
       const mockAuth = {
         verifyIdToken: vi.fn().mockResolvedValue({
           uid: 'google-oauth-uid-999',
           email: testUserRow.email,
           email_verified: true,
+          firebase: {
+            sign_in_provider: 'google.com',
+          },
         }),
       } as any;
       setMockFirebaseAuth(mockAuth);

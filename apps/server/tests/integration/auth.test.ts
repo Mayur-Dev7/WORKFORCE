@@ -6,6 +6,15 @@ import { ErrorCode } from '@workforce/shared';
 describe('Auth Integration Tests', () => {
   const app = createApp();
 
+  beforeAll(async () => {
+    const { pool } = await import('../../src/lib/db.js');
+    await pool.query(
+      `UPDATE users
+       SET auth_provider = 'legacy', is_active = true, firebase_uid = NULL
+       WHERE employee_code = 'EMP-001'`
+    );
+  });
+
   it('successfully logs in with valid employee credentials', async () => {
     const res = await request(app)
       .post('/api/v1/auth/login')

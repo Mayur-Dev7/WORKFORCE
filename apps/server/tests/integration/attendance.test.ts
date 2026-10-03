@@ -31,7 +31,12 @@ describe('Attendance Verification & Geofence Integration Tests', () => {
         outsideLon = validLon + 0.1;
       }
       await pool.query(`DELETE FROM attendance_sessions WHERE user_id = $1`, [alexId]);
-      await pool.query(`UPDATE face_templates SET embedding = $1 WHERE user_id = $2`, [alexValidEmbedding, alexId]);
+      await pool.query(`UPDATE users SET face_enrolled = true, auth_provider = 'legacy' WHERE id = $1`, [alexId]);
+      await pool.query(`
+        INSERT INTO face_templates (user_id, embedding, model_name, model_version)
+        VALUES ($1, $2, '@vladmandic/human', '3.2.0')
+        ON CONFLICT (user_id) DO UPDATE SET embedding = EXCLUDED.embedding
+      `, [alexId, alexValidEmbedding]);
     }
 
     const res = await request(app)

@@ -11,6 +11,13 @@ describe('RBAC Permission Enforcement Tests', () => {
   let superAdminToken = '';
 
   beforeAll(async () => {
+    const { pool } = await import('../../src/lib/db.js');
+    await pool.query(
+      `UPDATE users
+       SET auth_provider = 'legacy', is_active = true, firebase_uid = NULL
+       WHERE employee_code IN ('EMP-001', 'EMP-002', 'EMP-101')`
+    );
+
     // 1. Employee Login (Alex Mercer)
     const empRes = await request(app)
       .post('/api/v1/auth/login')
