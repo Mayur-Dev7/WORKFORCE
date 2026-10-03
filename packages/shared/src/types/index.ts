@@ -2,15 +2,17 @@ import { RoleName, PermissionKey, ErrorCode, AuditAction, LoginEventType } from 
 
 export interface User {
   id: string;
-  company_id: string;
-  office_id: string;
+  company_id: string | null;
+  office_id: string | null;
   department_id: string | null;
-  role_id: string;
-  employee_code: string;
+  role_id: string | null;
+  employee_code: string | null;
   name: string;
   email: string;
   is_active: boolean;
   face_enrolled: boolean;
+  token_version?: number;
+  approved_for_firebase_link?: boolean;
   created_at: string;
   updated_at: string;
   last_login_at: string | null;
@@ -30,6 +32,8 @@ export interface User {
 export interface Company {
   id: string;
   name: string;
+  owner_user_id?: string | null;
+  is_active?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -72,6 +76,7 @@ export interface Permission {
 
 export interface AttendanceSession {
   id: string;
+  company_id: string;
   user_id: string;
   office_id: string;
   check_in_at: string;
@@ -91,6 +96,9 @@ export interface AttendanceSession {
   check_out_face_similarity: number | null;
   check_out_liveness_score: number | null;
 
+  auto_closed?: boolean;
+  auto_close_reason?: string | null;
+
   created_at: string;
 
   // Joined fields
@@ -103,6 +111,7 @@ export interface AttendanceSession {
 
 export interface LoginAttempt {
   id: string;
+  company_id?: string | null;
   user_id: string | null;
   event_type: LoginEventType;
   failure_reason: string | null;
@@ -117,6 +126,7 @@ export interface LoginAttempt {
 
 export interface AuditLog {
   id: string;
+  company_id?: string | null;
   actor_user_id: string | null;
   action: AuditAction | string;
   entity_type: string;
@@ -208,6 +218,7 @@ export interface LeaveType {
 
 export interface LeaveBalance {
   id: string;
+  company_id: string;
   user_id: string;
   leave_type_id: string;
   leave_year: number;
@@ -225,6 +236,7 @@ export interface LeaveBalance {
 
 export interface LeaveRequest {
   id: string;
+  company_id: string;
   user_id: string;
   leave_type_id: string;
   start_date: string;
@@ -331,5 +343,63 @@ export interface UpdateShiftDTO {
     duration_minutes: number;
     is_paid?: boolean;
   }>;
+}
+
+// ─── Multi-Tenant & Company Settings ──────────────────────────────────────────
+
+export interface CompanySettings {
+  company_id: string;
+  work_start_time: string;
+  work_end_time: string;
+  grace_minutes: number;
+  timezone: string;
+  weekly_off_days: number[];
+  casual_leaves_per_year: number;
+  sick_leaves_per_year: number;
+  leave_year_start_month: number;
+  extra_rules?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpdateCompanySettingsDTO {
+  work_start_time?: string;
+  work_end_time?: string;
+  grace_minutes?: number;
+  timezone?: string;
+  weekly_off_days?: number[];
+  casual_leaves_per_year?: number;
+  sick_leaves_per_year?: number;
+  leave_year_start_month?: number;
+  extra_rules?: Record<string, unknown>;
+}
+
+export type InvitationStatus = 'pending' | 'accepted' | 'revoked' | 'expired';
+
+export interface Invitation {
+  id: string;
+  company_id: string;
+  company_name?: string;
+  email: string;
+  role_id: string;
+  role_name?: RoleName;
+  department_id: string | null;
+  department_name?: string;
+  office_id: string | null;
+  office_name?: string;
+  invited_by: string;
+  invited_by_name?: string;
+  status: InvitationStatus;
+  expires_at: string;
+  accepted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateInvitationDTO {
+  email: string;
+  role_id: string;
+  department_id?: string | null;
+  office_id?: string | null;
 }
 
