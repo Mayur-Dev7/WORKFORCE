@@ -123,7 +123,8 @@ export async function runSeed(): Promise<void> {
 
     // 5. Roles
     const rolesData = [
-      { name: RoleName.SUPER_ADMIN, desc: 'Full administrative access' },
+      { name: RoleName.COMPANY_ADMIN, desc: 'Full administrative access for the company' },
+      { name: RoleName.SUPER_ADMIN, desc: 'Global platform super administrator' },
       { name: RoleName.HR_ADMIN, desc: 'HR and workforce management' },
       { name: RoleName.MANAGER, desc: 'Team supervisor and approval access' },
       { name: RoleName.EMPLOYEE, desc: 'Standard employee access' },
@@ -142,7 +143,13 @@ export async function runSeed(): Promise<void> {
     }
 
     // 6. Role Permissions mapping
-    // SUPER_ADMIN gets all
+    // COMPANY_ADMIN and SUPER_ADMIN get all
+    await client.query(`
+      INSERT INTO role_permissions (role_id, permission_id)
+      SELECT $1, id FROM permissions
+      ON CONFLICT DO NOTHING;
+    `, [roleMap[RoleName.COMPANY_ADMIN]]);
+
     await client.query(`
       INSERT INTO role_permissions (role_id, permission_id)
       SELECT $1, id FROM permissions
@@ -239,9 +246,9 @@ export async function runSeed(): Promise<void> {
     const usersToSeed = [
       {
         code: 'EMP-001',
-        name: 'Sarah Connor (Super Admin)',
+        name: 'Sarah Connor (Company Admin)',
         email: 'superadmin@workforce.com',
-        role: RoleName.SUPER_ADMIN,
+        role: RoleName.COMPANY_ADMIN,
         deptId: dept2Id,
         officeId: office1Id,
         faceEnrolled: false,
@@ -297,16 +304,21 @@ export async function runSeed(): Promise<void> {
       const userRes = await client.query<{ id: string }>(`
         INSERT INTO users (
           company_id, office_id, department_id, role_id,
-          employee_code, name, email, password_hash, is_active, face_enrolled
+          employee_code, name, email, password_hash, is_active, face_enrolled, auth_provider
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9)
-        ON CONFLICT (company_id, employee_code)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, 'legacy')
+        ON CONFLICT ((LOWER(TRIM(email))))
         DO UPDATE SET
           name = EXCLUDED.name,
-          email = EXCLUDED.email,
+          employee_code = EXCLUDED.employee_code,
+          company_id = EXCLUDED.company_id,
           office_id = EXCLUDED.office_id,
           department_id = EXCLUDED.department_id,
           role_id = EXCLUDED.role_id,
+          password_hash = EXCLUDED.password_hash,
+          is_active = true,
+          auth_provider = 'legacy',
+          firebase_uid = NULL,
           face_enrolled = EXCLUDED.face_enrolled
         RETURNING id;
       `, [
