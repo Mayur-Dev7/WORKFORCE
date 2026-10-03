@@ -242,21 +242,10 @@ export const SelfEnrollmentPage: React.FC = () => {
   };
 
   // ── Computed values ──────────────────────────────────────────────────────
-  const currentPose = GUIDED_POSES[currentPoseIdx] || GUIDED_POSES[0];
-
   const cameraOutlineState = cameraError ? 'error'
     : liveFaceDetected && liveQuality >= 0.65 ? 'ready'
     : liveFaceDetected ? 'detected'
     : 'neutral';
-
-  const getCameraGuidanceText = () => {
-    if (capturingPose) return 'Capturing...';
-    if (lastCapturedPose) return `✓ ${lastCapturedPose} captured`;
-    if (!cameraReady) return 'Starting camera...';
-    if (!liveFaceDetected) return 'Position your face inside the frame';
-    if (liveQuality < 0.6) return 'Center your face';
-    return '✓ Face detected';
-  };
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
@@ -277,15 +266,15 @@ export const SelfEnrollmentPage: React.FC = () => {
         </Text>
       </div>
 
-      {/* ─── Status Banner — animated collapse so no layout shift ─── */}
-      <div style={{
-        overflow: 'hidden',
-        maxHeight: activeTab === 'camera' ? 0 : 120,
-        opacity: activeTab === 'camera' ? 0 : 1,
-        marginBottom: activeTab === 'camera' ? 0 : 12,
-        transition: 'max-height 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease, margin-bottom 0.28s ease',
-      }}>
-        {user?.face_enrolled ? (
+      {/* ─── Status Banner — only show when a face is already enrolled ─── */}
+      {user?.face_enrolled && (
+        <div style={{
+          overflow: 'hidden',
+          maxHeight: activeTab === 'camera' ? 0 : 120,
+          opacity: activeTab === 'camera' ? 0 : 1,
+          marginBottom: activeTab === 'camera' ? 0 : 12,
+          transition: 'max-height 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease, margin-bottom 0.28s ease',
+        }}>
           <Card
             size="small"
             styles={{ body: { padding: '10px 14px' } }}
@@ -317,15 +306,8 @@ export const SelfEnrollmentPage: React.FC = () => {
               </Button>
             </div>
           </Card>
-        ) : (
-          <Alert
-            message="Face reference required to enable attendance check-in."
-            type="warning"
-            showIcon
-            style={{ borderRadius: 12 }}
-          />
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ─── Mode Selector (Segmented — smooth sliding pill, zero shake) ─── */}
       <div id="reg-mode-selector" style={{ marginBottom: 4 }}>
@@ -470,20 +452,7 @@ export const SelfEnrollmentPage: React.FC = () => {
             />
           )}
 
-          {/* Compact step header — fixed height prevents layout jump */}
-          <div style={{ minHeight: 66, marginBottom: 8 }}>
-            <Text style={{ fontSize: 12, fontWeight: 700, color: '#1677ff', textTransform: 'uppercase', letterSpacing: 0.6, display: 'block' }}>
-              Step {Math.min(currentPoseIdx + 1, 5)} of 5
-            </Text>
-            <Text strong style={{ fontSize: 18, display: 'block', margin: '2px 0 2px' }}>
-              {currentPose.shortTitle}
-            </Text>
-            <Text type="secondary" style={{ fontSize: 13, lineHeight: '1.35' }}>
-              {currentPose.desc}
-            </Text>
-          </div>
-
-          {/* Step progress dots */}
+          {/* Step progress dots only — no header text */}
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12, padding: '0 4px' }}>
             {GUIDED_POSES.map((pose, i) => {
               const isCompleted = i < cameraSamples.length;
@@ -515,10 +484,7 @@ export const SelfEnrollmentPage: React.FC = () => {
             })}
           </div>
 
-          {/* ─── Camera Viewport ─── 
-              Height is capped at clamp(180px,50vw,260px) so Capture button
-              always fits on screen without scrolling on any phone.
-              GPU-composited via will-change on the video element. */}
+          {/* Camera viewport — no status pill */}
           <div className="apple-face-reg-camera-box" style={{ marginBottom: 12 }}>
             <video
               ref={videoRef}
@@ -528,12 +494,9 @@ export const SelfEnrollmentPage: React.FC = () => {
               className="apple-face-reg-video"
             />
             <div className={`apple-face-reg-guide ${cameraOutlineState}`} />
-            <div className="apple-face-reg-status-pill">
-              {getCameraGuidanceText()}
-            </div>
           </div>
 
-          {/* ─── Capture Button — always visible, no scroll needed ─── */}
+          {/* Capture button */}
           <Button
             type="primary"
             size="large"
@@ -546,26 +509,17 @@ export const SelfEnrollmentPage: React.FC = () => {
             {capturingPose ? 'Capturing...' : 'Capture'}
           </Button>
 
-          {/* Secondary actions */}
-          <div style={{ display: 'flex', gap: 8 }}>
-            {cameraSamples.length > 0 && (
-              <Button
-                block
-                icon={<UndoOutlined />}
-                onClick={handleResetCameraPoses}
-                style={{ height: 44, borderRadius: 10, flex: 1 }}
-              >
-                Restart
-              </Button>
-            )}
+          {/* Restart only — no "Upload instead" */}
+          {cameraSamples.length > 0 && (
             <Button
               block
-              onClick={() => handleTabChange('upload')}
-              style={{ height: 44, borderRadius: 10, flex: 1 }}
+              icon={<UndoOutlined />}
+              onClick={handleResetCameraPoses}
+              style={{ height: 44, borderRadius: 10, marginBottom: 0 }}
             >
-              Upload instead
+              Restart
             </Button>
-          </div>
+          )}
 
           {/* Captured poses thumbnail strip */}
           {cameraSamples.length > 0 && (
